@@ -5,7 +5,7 @@ Handles parsing, cleaning, and tokenization of documentation files.
 
 import os
 import re
-import pickle
+import pickle  # nosec B403  # Used for saving/loading user's own processed datasets
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import logging
@@ -320,7 +320,7 @@ def load_processed_dataset(
 ) -> MarkdownDataset:
     """Load processed dataset from disk."""
     with open(input_path, "rb") as f:
-        samples = pickle.load(f)
+        samples = pickle.load(f)  # nosec B301  # Loading user's own processed data
     dataset = MarkdownDataset([], tokenizer, max_length=max_length)
     dataset.samples = samples
     logger.info(f"Dataset loaded from {input_path}")

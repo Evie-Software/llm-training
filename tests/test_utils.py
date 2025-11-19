@@ -136,6 +136,7 @@ class TestCountParameters:
 
     def test_count_parameters_mock(self):
         """Test parameter counting with mock MLX model."""
+
         # Create a mock model object that mimics MLX model structure
         class MockModel:
             def __init__(self):
