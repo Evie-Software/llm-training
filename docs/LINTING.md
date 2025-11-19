@@ -141,16 +141,14 @@ Bandit is configured in `pyproject.toml`:
 exclude_dirs = ["tests", "venv", ".venv", "build", "dist"]
 # B101: assert_used - acceptable in development/validation code
 # B601: paramiko - not used
-# B614: pytorch_load - safe when loading user's own processed data
 # B615: huggingface_unsafe_download - expected behavior for training framework
-skips = ["B101", "B601", "B614", "B615"]
+skips = ["B101", "B601", "B615"]
 ```
 
 ### Skipped checks
 
 - **B101**: `assert_used` - Acceptable in development/validation code (now using ValueError)
 - **B601**: `paramiko` - Not used in this project
-- **B614**: `pytorch_load` - Safe when loading user's own processed data
 - **B615**: `huggingface_unsafe_download` - Expected behavior for training framework (users specify model names)
 
 ### Ignoring false positives
@@ -158,8 +156,8 @@ skips = ["B101", "B601", "B614", "B615"]
 Add `# nosec` comment on the same line to ignore specific issues:
 
 ```python
-# Put nosec comment at the end of the line
-samples = torch.load(input_path, weights_only=False)  # nosec B614
+# Put nosec comment at the end of the line with specific check number
+samples = pickle.load(f)  # nosec B301  # Loading user's own processed data
 ```
 
 ## MyPy (Type Checking)
