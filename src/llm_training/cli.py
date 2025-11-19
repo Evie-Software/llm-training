@@ -4,14 +4,21 @@ Command-line interface for MLX-based LLM training.
 
 import os
 import warnings
+import logging
 
 # Suppress transformers warning about missing PyTorch/TensorFlow
 # We only use transformers for tokenizers, not models (we use MLX for models)
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 
+# Suppress tokenizers library warnings
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 # Suppress tokenizer warnings about long sequences - we handle chunking ourselves
 warnings.filterwarnings("ignore", message="Token indices sequence length is longer than")
 warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
+
+# Reduce transformers logging verbosity
+logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
 
 import argparse
 import sys

@@ -26,6 +26,9 @@ warnings.filterwarnings(
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Suppress transformers tokenization warnings (they use logging, not warnings module)
+logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
+
 
 class MarkdownParser:
     """Parse and clean markdown files."""
