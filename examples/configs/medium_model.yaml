@@ -1,0 +1,61 @@
+# Example configuration for training a medium model (gpt2)
+# Good balance of quality and resource usage
+
+data:
+  raw_data_path: "data/raw"
+  processed_data_path: "data/processed"
+  file_extensions:
+    - ".md"
+    - ".mdx"
+  max_length: 512
+  train_test_split: 0.9
+  validation_split: 0.05
+  seed: 42
+
+model:
+  model_name: "gpt2"  # Standard GPT-2 with 124M parameters
+  cache_dir: "models/cache"
+  output_dir: "models/output"
+  max_length: 512
+
+training:
+  output_dir: "checkpoints"
+  logging_dir: "logs"
+  num_train_epochs: 3
+  per_device_train_batch_size: 2  # Smaller batch for medium model
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8  # Effective batch size: 16
+  learning_rate: 5.0e-05
+  weight_decay: 0.01
+  warmup_steps: 500
+  max_grad_norm: 1.0
+  fp16: false
+  bf16: true
+  gradient_checkpointing: true
+  eval_steps: 500
+  save_steps: 1000
+  save_total_limit: 2
+  evaluation_strategy: "steps"
+  save_strategy: "steps"
+  load_best_model_at_end: true
+  metric_for_best_model: "loss"
+  logging_steps: 100
+  report_to: "tensorboard"
+  use_mps: true
+  dataloader_num_workers: 0
+  seed: 42
+  resume_from_checkpoint: null
+
+finetuning:
+  lora_r: 8
+  lora_alpha: 16
+  lora_dropout: 0.1
+  target_modules:
+    - "q_proj"
+    - "v_proj"
+  num_train_epochs: 3
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 0.0003
+  output_dir: "models/finetuned"
+  logging_dir: "logs/finetuning"
