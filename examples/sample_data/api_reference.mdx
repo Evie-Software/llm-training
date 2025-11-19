@@ -1,0 +1,183 @@
+---
+title: API Reference
+description: Complete API documentation for the LLM training framework
+---
+
+import { Callout } from '@/components/Callout'
+import { CodeBlock } from '@/components/CodeBlock'
+
+# API Reference
+
+This document provides a complete reference for the LLM training framework API.
+
+<Callout type="info">
+This framework is designed specifically for M3 MacBook Pro with 16GB RAM.
+</Callout>
+
+## Config Module
+
+The Config module manages all configuration for training, evaluation, and fine-tuning.
+
+### Config Class
+
+The main configuration class that combines all sub-configurations:
+
+```python
+from llm_training import Config
+
+# Load from YAML
+config = Config.from_yaml("configs/my_config.yaml")
+
+# Get default config
+config = Config.get_default()
+
+# Save to YAML
+config.to_yaml("configs/output.yaml")
+```
+
+### DataConfig
+
+Controls dataset preparation and processing:
+
+- `raw_data_path`: Directory containing source markdown files
+- `processed_data_path`: Output directory for processed data
+- `file_extensions`: List of file extensions to process
+- `max_length`: Maximum sequence length in tokens
+- `train_test_split`: Proportion of data for training
+- `validation_split`: Proportion of data for validation
+- `seed`: Random seed for reproducibility
+
+### ModelConfig
+
+Defines the model architecture and storage:
+
+- `model_name`: HuggingFace model identifier
+- `cache_dir`: Directory for caching downloaded models
+- `output_dir`: Directory for saving trained models
+- `max_length`: Maximum sequence length
+
+### TrainingConfig
+
+<Callout type="warning">
+Ensure `use_mps` is set to true for GPU acceleration on M3.
+</Callout>
+
+Training hyperparameters and optimization settings:
+
+- `num_train_epochs`: Number of training epochs
+- `per_device_train_batch_size`: Batch size per device
+- `gradient_accumulation_steps`: Steps before updating weights
+- `learning_rate`: Initial learning rate
+- `bf16`: Use bfloat16 mixed precision
+- `gradient_checkpointing`: Enable gradient checkpointing
+- `use_mps`: Use Metal Performance Shaders
+
+## Dataset Module
+
+Handles markdown file processing and dataset creation.
+
+### MarkdownDataset
+
+PyTorch dataset for markdown files:
+
+```python
+from llm_training.dataset import MarkdownDataset
+from transformers import AutoTokenizer
+
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
+dataset = MarkdownDataset(
+    file_paths=["doc1.md", "doc2.md"],
+    tokenizer=tokenizer,
+    max_length=512,
+    stride=256
+)
+```
+
+### Functions
+
+- `collect_markdown_files()`: Find all markdown files in directory
+- `prepare_dataset()`: Create train/val/test splits
+- `save_processed_dataset()`: Save processed dataset to disk
+- `load_processed_dataset()`: Load previously processed dataset
+
+## Training Module
+
+Core training functionality with M3 optimizations.
+
+### Trainer
+
+Main training class:
+
+```python
+from llm_training import Trainer, Config
+
+trainer = Trainer(
+    config=config,
+    train_dataset=train_ds,
+    eval_dataset=val_ds,
+    test_dataset=test_ds
+)
+
+# Train the model
+trainer.train()
+
+# Generate text
+text = trainer.generate_text("Hello", max_length=50)
+```
+
+## Evaluation Module
+
+<Callout type="success">
+The evaluation module provides comprehensive metrics including perplexity and loss.
+</Callout>
+
+### Evaluator
+
+Evaluate trained models:
+
+```python
+from llm_training.evaluation import Evaluator
+
+evaluator = Evaluator("models/output")
+
+# Calculate perplexity
+perplexity = evaluator.calculate_perplexity(test_dataset)
+
+# Generate samples
+samples = evaluator.generate_samples(["Prompt 1", "Prompt 2"])
+```
+
+## Fine-tuning Module
+
+Parameter-efficient fine-tuning with LoRA.
+
+### LoRAFineTuner
+
+Fine-tune models efficiently:
+
+```python
+from llm_training.finetuning import LoRAFineTuner
+
+finetuner = LoRAFineTuner(
+    base_model_path="models/output",
+    config=config,
+    train_dataset=train_ds,
+    eval_dataset=val_ds
+)
+
+# Fine-tune
+finetuner.finetune()
+
+# Merge and save
+finetuner.merge_and_save("models/merged")
+```
+
+## Utility Functions
+
+Helper functions for common tasks:
+
+- `get_device()`: Detect and return appropriate device (MPS/CUDA/CPU)
+- `estimate_memory()`: Estimate memory requirements
+- `setup_logging()`: Configure logging
+- `print_system_info()`: Display system information
+- `cleanup_checkpoints()`: Manage checkpoint storage
