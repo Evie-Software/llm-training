@@ -1,7 +1,13 @@
 """
 LLM Training Framework using MLX
-Optimized for M3 MacBook Pro with 16GB RAM
+Optimized for Apple Silicon (M1/M2/M3/M4) with auto-detection
 """
+
+import os
+
+# Suppress transformers warning about missing PyTorch/TensorFlow
+# We only use transformers for tokenizers, not models (we use MLX for models)
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 
 __version__ = "0.2.0"
 

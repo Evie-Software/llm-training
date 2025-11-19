@@ -1,15 +1,15 @@
-# LLM Training Framework for M3 MacBook Pro
+# MLX LLM Training Framework for Apple Silicon
 
 [![Tests](https://github.com/Evie-Software/llm-training/actions/workflows/tests.yml/badge.svg)](https://github.com/Evie-Software/llm-training/actions/workflows/tests.yml)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-A comprehensive, production-ready framework for training small Language Models (LLMs) on Markdown documentation, specifically optimized for Apple M3 MacBook Pro with 16GB RAM using **MLX** - Apple's ML framework for Apple Silicon.
+A comprehensive, production-ready framework for training small Language Models (LLMs) on Markdown documentation, optimized for Apple Silicon (M1/M2/M3/M4) with auto-detection using **MLX** - Apple's ML framework for Apple Silicon.
 
 ## 🎯 Key Features
 
-- **Apple Silicon Native**: Uses MLX framework optimized specifically for M1/M2/M3 chips
+- **Apple Silicon Native**: Uses MLX framework for all M-series chips (M1/M2/M3/M4+)
 - **Memory Efficient**: Carefully tuned for 16GB RAM with gradient accumulation and checkpointing
 - **Unified Memory**: Leverages Apple Silicon's unified memory architecture
 - **Markdown Focused**: Purpose-built for training on `.md` and `.mdx` documentation files
@@ -212,7 +212,7 @@ llm-train finetune mlx-community/gpt2 data/specialized \
 
 ### Default Configuration
 
-The default configuration is optimized for M3 MacBook Pro with 16GB RAM:
+The default configuration is optimized for all Apple Silicon Macs:
 
 ```yaml
 model:
@@ -505,7 +505,7 @@ Manage disk space:
 
 ## 📊 Performance Expectations
 
-On M3 MacBook Pro (16GB RAM) with MLX:
+On Apple Silicon (performance varies by RAM) with MLX:
 
 - **Small model (distilgpt2, 82M):** ~800-1000 samples/sec
 - **Medium model (gpt2, 124M):** ~500-700 samples/sec

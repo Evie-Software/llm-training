@@ -2,6 +2,12 @@
 Command-line interface for MLX-based LLM training.
 """
 
+import os
+
+# Suppress transformers warning about missing PyTorch/TensorFlow
+# We only use transformers for tokenizers, not models (we use MLX for models)
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+
 import argparse
 import sys
 from pathlib import Path

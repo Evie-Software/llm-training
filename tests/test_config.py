@@ -19,10 +19,10 @@ class TestDataConfig:
     """Test DataConfig class."""
 
     def test_default_values(self):
-        """Test default configuration values."""
+        """Test default configuration values (before auto-detection)."""
         config = DataConfig()
         assert config.raw_data_path == "data/raw"
-        assert config.max_length == 512
+        assert config.max_length == 0  # 0 = auto-detect
         assert config.train_test_split == 0.9
         assert config.seed == 42
         assert ".md" in config.file_extensions
@@ -47,7 +47,7 @@ class TestModelConfig:
         """Test default model configuration."""
         config = ModelConfig()
         assert config.model_name == "mlx-community/gpt2"
-        assert config.max_length == 512
+        assert config.max_length == 0  # 0 = auto-detect
 
     def test_custom_model(self):
         """Test custom model configuration."""
@@ -60,18 +60,17 @@ class TestTrainingConfig:
     """Test TrainingConfig class."""
 
     def test_default_training_config(self):
-        """Test default training configuration."""
+        """Test default training configuration (before auto-detection)."""
         config = TrainingConfig()
         assert config.num_train_epochs == 3
-        assert config.batch_size == 4  # MLX default
-        assert config.gradient_accumulation_steps == 4
+        assert config.batch_size == 0  # 0 = auto-detect
+        assert config.gradient_accumulation_steps == 0  # 0 = auto-detect
         assert config.grad_checkpoint is True
 
     def test_memory_optimization_settings(self):
         """Test memory optimization settings for MLX."""
         config = TrainingConfig()
         assert config.grad_checkpoint is True  # MLX gradient checkpointing
-        assert config.batch_size == 4  # Efficient MLX batch size
 
 
 class TestFineTuningConfig:
@@ -84,6 +83,8 @@ class TestFineTuningConfig:
         assert config.lora_alpha == 16
         assert config.lora_dropout == 0.0
         assert config.lora_layers == 16  # Number of layers to apply LoRA to
+        assert config.batch_size == 0  # 0 = auto-detect
+        assert config.gradient_accumulation_steps == 0  # 0 = auto-detect
 
 
 class TestConfig:
@@ -97,23 +98,47 @@ class TestConfig:
         assert isinstance(config.training, TrainingConfig)
         assert isinstance(config.finetuning, FineTuningConfig)
 
+        # After get_default(), auto-detection should have been applied
+        assert config.data.max_length > 0  # Auto-detected
+        assert config.training.batch_size > 0  # Auto-detected
+        assert config.training.gradient_accumulation_steps > 0  # Auto-detected
+
+    def test_auto_detection(self):
+        """Test that auto-detection sets reasonable values."""
+        config = Config.get_default()
+
+        # These should all be positive after auto-detection
+        assert config.data.max_length > 0
+        assert config.model.max_length > 0
+        assert config.training.batch_size > 0
+        assert config.training.gradient_accumulation_steps > 0
+
+        # Values should be within reasonable ranges
+        assert 256 <= config.data.max_length <= 2048
+        assert 1 <= config.training.batch_size <= 16
+        assert 1 <= config.training.gradient_accumulation_steps <= 32
+
     def test_yaml_save_load(self):
         """Test saving and loading configuration to/from YAML."""
         with tempfile.TemporaryDirectory() as tmpdir:
             yaml_path = os.path.join(tmpdir, "test_config.yaml")
 
-            # Create and save config
-            original_config = Config.get_default()
+            # Create and save config with custom values
+            original_config = Config()
             original_config.model.model_name = "mlx-community/distilgpt2"
             original_config.training.num_train_epochs = 5
+            original_config.training.batch_size = 2  # Set explicit value
+            original_config.data.max_length = 1024  # Set explicit value
             original_config.to_yaml(yaml_path)
 
             # Load config
             loaded_config = Config.from_yaml(yaml_path)
 
-            # Verify
+            # Verify custom values are preserved
             assert loaded_config.model.model_name == "mlx-community/distilgpt2"
             assert loaded_config.training.num_train_epochs == 5
+            assert loaded_config.training.batch_size == 2
+            assert loaded_config.data.max_length == 1024
 
     def test_validation(self):
         """Test configuration validation."""
@@ -136,17 +161,20 @@ class TestConfig:
 
     def test_invalid_validation(self):
         """Test validation with invalid values."""
-        config = Config.get_default()
+        config = Config()
+        # Don't call get_default() so values remain at 0
+        # Then set batch_size to invalid value
+        config.training.batch_size = -1
 
-        # Invalid batch size
-        config.training.batch_size = 0
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Batch size must be positive"):
             config.validate()
 
         # Reset and test invalid split
-        config = Config.get_default()
+        config = Config()
         config.data.train_test_split = 1.5
-        with pytest.raises(ValueError):
+        config.training.batch_size = 2  # Set valid value
+
+        with pytest.raises(ValueError, match="Train/test split must be between 0 and 1"):
             config.validate()
 
 
@@ -165,6 +193,10 @@ class TestCreateDefaultConfig:
             # Check config is valid
             assert isinstance(config, Config)
             assert config.model.model_name == "mlx-community/gpt2"
+
+            # Check auto-detection was applied
+            assert config.data.max_length > 0
+            assert config.training.batch_size > 0
 
 
 if __name__ == "__main__":
