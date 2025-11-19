@@ -14,7 +14,6 @@ import mlx.core as mx
 import mlx.nn as nn
 import mlx.optimizers as optim
 from mlx_lm import load, generate
-from mlx_lm.utils import generate_step
 
 from llm_training.config import Config
 from llm_training.dataset import MarkdownDataset
