@@ -6,6 +6,7 @@ Handles parsing, cleaning, and tokenization of documentation files.
 import os
 import re
 import pickle  # nosec B403  # Used for saving/loading user's own processed datasets
+import warnings
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import logging
@@ -14,6 +15,13 @@ import numpy as np
 from transformers import PreTrainedTokenizer
 import markdown
 from bs4 import BeautifulSoup
+
+# Suppress tokenizer warnings about long sequences - we handle chunking ourselves
+warnings.filterwarnings(
+    "ignore",
+    message="Token indices sequence length is longer than the",
+    category=UserWarning,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -182,8 +190,9 @@ class MarkdownDataset:
                     source_name = self._get_source_name(file_path)
                     cleaned = f"[{source_name}] {cleaned}"
 
-                # Tokenize and create chunks
-                tokens = self.tokenizer.encode(cleaned, add_special_tokens=True)
+                # Tokenize - we handle chunking ourselves, so don't truncate
+                # This suppresses the warning about long sequences
+                tokens = self.tokenizer.encode(cleaned, add_special_tokens=True, truncation=False)
 
                 # Create overlapping chunks for long documents
                 for i in range(0, len(tokens), self.stride):
