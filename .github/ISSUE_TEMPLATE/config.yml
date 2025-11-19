@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📚 Documentation
+    url: https://github.com/Evie-Software/llm-training/blob/main/README.md
+    about: Check out our comprehensive documentation
+  - name: 💬 Discussions
+    url: https://github.com/Evie-Software/llm-training/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: 🆘 Troubleshooting Guide
+    url: https://github.com/Evie-Software/llm-training/blob/main/README.md#troubleshooting
+    about: Check common issues and solutions

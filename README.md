@@ -1,5 +1,10 @@
 # LLM Training Framework for M3 MacBook Pro
 
+[![Tests](https://github.com/Evie-Software/llm-training/actions/workflows/tests.yml/badge.svg)](https://github.com/Evie-Software/llm-training/actions/workflows/tests.yml)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 A comprehensive, production-ready framework for training small Language Models (LLMs) on Markdown documentation, specifically optimized for Apple M3 MacBook Pro with 16GB RAM.
 
 ## 🎯 Key Features
