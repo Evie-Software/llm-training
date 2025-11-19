@@ -1,68 +1,44 @@
 """
-Training pipeline optimized for M3 MacBook Pro with 16GB RAM.
-Uses PyTorch MPS backend for GPU acceleration on Apple Silicon.
+Training pipeline using MLX for Apple Silicon optimization.
+Optimized for M3 MacBook Pro with 16GB RAM.
 """
 
 import os
 import logging
 from typing import Optional, Dict, Any
 from pathlib import Path
+import json
+from tqdm import tqdm
 
-import torch
-import psutil
-from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    TrainingArguments,
-    Trainer as HFTrainer,
-    DataCollatorForLanguageModeling,
-)
-from torch.utils.data import Dataset
+import mlx.core as mx
+import mlx.nn as nn
+import mlx.optimizers as optim
+from mlx_lm import load, generate
 
-from llm_training.config import Config, TrainingConfig
-from llm_training.utils import setup_logging, get_device, estimate_memory
+from llm_training.config import Config
+from llm_training.dataset import MarkdownDataset
+from llm_training.utils import setup_logging, estimate_memory_mlx
 
 logger = logging.getLogger(__name__)
 
 
-class MemoryMonitor:
-    """Monitor memory usage during training."""
-
-    def __init__(self):
-        self.process = psutil.Process()
-
-    def get_memory_usage(self) -> Dict[str, float]:
-        """Get current memory usage in GB."""
-        mem_info = self.process.memory_info()
-        return {
-            "ram_used_gb": mem_info.rss / (1024**3),
-            "ram_percent": self.process.memory_percent(),
-        }
-
-    def log_memory(self):
-        """Log current memory usage."""
-        usage = self.get_memory_usage()
-        logger.info(f"Memory usage: {usage['ram_used_gb']:.2f} GB ({usage['ram_percent']:.1f}%)")
-
-
 class Trainer:
     """
-    LLM Trainer optimized for M3 MacBook Pro.
+    LLM Trainer using MLX for Apple Silicon.
 
     Features:
-    - MPS (Metal Performance Shaders) acceleration for M3
-    - Memory-efficient training with gradient accumulation
-    - Mixed precision training (bfloat16)
-    - Gradient checkpointing to reduce memory
+    - Native M3 optimization with MLX
+    - Efficient unified memory usage
+    - Simple training loop
     - Automatic checkpoint management
     """
 
     def __init__(
         self,
         config: Config,
-        train_dataset: Dataset,
-        eval_dataset: Optional[Dataset] = None,
-        test_dataset: Optional[Dataset] = None,
+        train_dataset: MarkdownDataset,
+        eval_dataset: Optional[MarkdownDataset] = None,
+        test_dataset: Optional[MarkdownDataset] = None,
     ):
         """
         Initialize trainer.
@@ -77,93 +53,130 @@ class Trainer:
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.test_dataset = test_dataset
-        self.memory_monitor = MemoryMonitor()
 
         # Setup logging
         setup_logging(config.training.logging_dir)
 
-        # Get device
-        self.device = get_device(use_mps=config.training.use_mps)
-        logger.info(f"Using device: {self.device}")
-
         # Initialize model and tokenizer
-        self.tokenizer = None
         self.model = None
-        self.trainer = None
+        self.tokenizer = None
 
         # Load model
         self._load_model()
 
+        # Setup optimizer
+        self._setup_optimizer()
+
+        # Training state
+        self.global_step = 0
+        self.current_epoch = 0
+
+        logger.info("MLX Trainer initialized successfully")
+
     def _load_model(self):
-        """Load model and tokenizer."""
+        """Load model and tokenizer using mlx-lm."""
         logger.info(f"Loading model: {self.config.model.model_name}")
 
-        # Load tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.config.model.model_name,
-            cache_dir=self.config.model.cache_dir,
-        )
+        try:
+            # Load model and tokenizer from mlx-community
+            self.model, self.tokenizer = load(self.config.model.model_name)
+            logger.info("Model loaded successfully")
 
-        # Set pad token if not set
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+            # Estimate memory
+            estimate_memory_mlx(self.model, self.config.training.batch_size)
 
-        # Load model
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.config.model.model_name,
-            cache_dir=self.config.model.cache_dir,
-            torch_dtype=torch.bfloat16 if self.config.training.bf16 else torch.float32,
-        )
+        except Exception as e:
+            logger.error(f"Failed to load model: {e}")
+            raise
 
-        # Enable gradient checkpointing for memory efficiency
-        if self.config.training.gradient_checkpointing:
-            self.model.gradient_checkpointing_enable()
-            logger.info("Gradient checkpointing enabled")
-
-        # Move to device
-        self.model = self.model.to(self.device)
-
-        # Log memory usage
-        self.memory_monitor.log_memory()
-
-        # Estimate memory requirements
-        estimate_memory(
-            self.model,
-            self.config.training.per_device_train_batch_size,
-            self.config.model.max_length,
-        )
-
-    def _create_training_args(self) -> TrainingArguments:
-        """Create Hugging Face training arguments."""
-        return TrainingArguments(
-            output_dir=self.config.training.output_dir,
-            num_train_epochs=self.config.training.num_train_epochs,
-            per_device_train_batch_size=self.config.training.per_device_train_batch_size,
-            per_device_eval_batch_size=self.config.training.per_device_eval_batch_size,
-            gradient_accumulation_steps=self.config.training.gradient_accumulation_steps,
+    def _setup_optimizer(self):
+        """Setup optimizer."""
+        # Use AdamW optimizer (standard for LLM training)
+        self.optimizer = optim.AdamW(
             learning_rate=self.config.training.learning_rate,
             weight_decay=self.config.training.weight_decay,
-            warmup_steps=self.config.training.warmup_steps,
-            max_grad_norm=self.config.training.max_grad_norm,
-            fp16=self.config.training.fp16,
-            bf16=self.config.training.bf16,
-            logging_dir=self.config.training.logging_dir,
-            logging_steps=self.config.training.logging_steps,
-            eval_steps=self.config.training.eval_steps,
-            save_steps=self.config.training.save_steps,
-            save_total_limit=self.config.training.save_total_limit,
-            evaluation_strategy=self.config.training.evaluation_strategy,
-            save_strategy=self.config.training.save_strategy,
-            load_best_model_at_end=self.config.training.load_best_model_at_end,
-            metric_for_best_model=self.config.training.metric_for_best_model,
-            report_to=self.config.training.report_to,
-            dataloader_num_workers=self.config.training.dataloader_num_workers,
-            seed=self.config.training.seed,
-            # MPS-specific settings
-            use_cpu=False if self.device.type == "mps" else True,
-            # Memory optimization
-            gradient_checkpointing=self.config.training.gradient_checkpointing,
         )
+
+        # Learning rate schedule (warmup + cosine decay)
+        def lr_schedule(step):
+            warmup = self.config.training.warmup_steps
+            if step < warmup:
+                return step / warmup
+            else:
+                # Cosine decay after warmup
+                progress = (step - warmup) / (
+                    self.config.training.num_train_epochs
+                    * len(self.train_dataset)
+                    // self.config.training.batch_size
+                    - warmup
+                )
+                return 0.5 * (1 + mx.cos(mx.pi * progress))
+
+        self.lr_schedule = lr_schedule
+
+    def loss_fn(self, model, inputs, targets, attention_mask):
+        """
+        Compute loss for language modeling.
+
+        Args:
+            model: The model
+            inputs: Input token IDs
+            targets: Target token IDs
+            attention_mask: Attention mask
+
+        Returns:
+            Loss value
+        """
+        # Forward pass
+        logits = model(inputs)
+
+        # Compute cross-entropy loss
+        # Shift logits and targets for next-token prediction
+        shift_logits = logits[..., :-1, :]
+        shift_targets = targets[..., 1:]
+        shift_mask = attention_mask[..., 1:]
+
+        # Flatten for loss computation
+        vocab_size = shift_logits.shape[-1]
+        loss = nn.losses.cross_entropy(
+            shift_logits.reshape(-1, vocab_size), shift_targets.reshape(-1), reduction="none"
+        )
+
+        # Apply mask and average
+        loss = loss.reshape(shift_targets.shape)
+        loss = (loss * shift_mask).sum() / shift_mask.sum()
+
+        return loss
+
+    def train_step(self, batch):
+        """
+        Single training step.
+
+        Args:
+            batch: Batch of data
+
+        Returns:
+            Loss value
+        """
+        # Convert to MLX arrays
+        inputs = mx.array(batch["input_ids"])
+        targets = mx.array(batch["labels"])
+        attention_mask = mx.array(batch["attention_mask"])
+
+        # Compute loss and gradients
+        loss_and_grad_fn = nn.value_and_grad(self.model, self.loss_fn)
+        loss, grads = loss_and_grad_fn(self.model, inputs, targets, attention_mask)
+
+        # Update model
+        self.optimizer.update(self.model, grads)
+
+        # Update learning rate
+        lr = self.config.training.learning_rate * self.lr_schedule(self.global_step)
+        self.optimizer.learning_rate = lr
+
+        mx.eval(self.model.parameters(), self.optimizer.state)
+
+        return loss.item()
 
     def train(self):
         """Train the model."""
@@ -172,52 +185,60 @@ class Trainer:
         if self.eval_dataset:
             logger.info(f"Evaluation samples: {len(self.eval_dataset)}")
 
-        # Log initial memory
-        self.memory_monitor.log_memory()
+        best_eval_loss = float("inf")
+        steps_per_epoch = len(self.train_dataset) // self.config.training.batch_size
 
-        # Create training arguments
-        training_args = self._create_training_args()
+        for epoch in range(self.config.training.num_train_epochs):
+            self.current_epoch = epoch
+            logger.info(f"Epoch {epoch + 1}/{self.config.training.num_train_epochs}")
 
-        # Create data collator
-        data_collator = DataCollatorForLanguageModeling(
-            tokenizer=self.tokenizer,
-            mlm=False,  # We're doing causal language modeling, not masked
-        )
-
-        # Create trainer
-        self.trainer = HFTrainer(
-            model=self.model,
-            args=training_args,
-            train_dataset=self.train_dataset,
-            eval_dataset=self.eval_dataset,
-            data_collator=data_collator,
-        )
-
-        # Train
-        try:
-            train_result = self.trainer.train(
-                resume_from_checkpoint=self.config.training.resume_from_checkpoint
+            # Training loop
+            epoch_loss = 0.0
+            progress_bar = tqdm(
+                self.train_dataset.batch_iterate(self.config.training.batch_size, shuffle=True),
+                total=steps_per_epoch,
+                desc=f"Training Epoch {epoch + 1}",
             )
 
-            # Save final model
-            self.trainer.save_model(self.config.model.output_dir)
-            self.tokenizer.save_pretrained(self.config.model.output_dir)
+            for batch in progress_bar:
+                loss = self.train_step(batch)
+                epoch_loss += loss
+                self.global_step += 1
 
-            # Log metrics
-            metrics = train_result.metrics
-            self.trainer.log_metrics("train", metrics)
-            self.trainer.save_metrics("train", metrics)
+                # Logging
+                if self.global_step % self.config.training.logging_steps == 0:
+                    avg_loss = epoch_loss / (self.global_step % steps_per_epoch + 1)
+                    progress_bar.set_postfix({"loss": f"{avg_loss:.4f}"})
+                    logger.info(f"Step {self.global_step}, Loss: {avg_loss:.4f}")
 
-            logger.info("Training completed successfully!")
-            self.memory_monitor.log_memory()
+                # Evaluation
+                if self.global_step % self.config.training.eval_steps == 0 and self.eval_dataset:
+                    eval_loss = self.evaluate()
+                    logger.info(f"Evaluation loss: {eval_loss:.4f}")
 
-            return train_result
+                    # Save best model
+                    if eval_loss < best_eval_loss:
+                        best_eval_loss = eval_loss
+                        self.save_checkpoint(os.path.join(self.config.training.output_dir, "best"))
 
-        except Exception as e:
-            logger.error(f"Training failed: {e}")
-            raise
+                # Save checkpoint
+                if self.global_step % self.config.training.save_steps == 0:
+                    checkpoint_path = os.path.join(
+                        self.config.training.output_dir, f"checkpoint-{self.global_step}"
+                    )
+                    self.save_checkpoint(checkpoint_path)
 
-    def evaluate(self, dataset: Optional[Dataset] = None) -> Dict[str, float]:
+            # End of epoch
+            avg_epoch_loss = epoch_loss / steps_per_epoch
+            logger.info(f"Epoch {epoch + 1} completed. Average loss: {avg_epoch_loss:.4f}")
+
+        # Save final model
+        self.save_checkpoint(self.config.model.output_dir)
+        logger.info("Training completed successfully!")
+
+        return {"final_loss": avg_epoch_loss}
+
+    def evaluate(self, dataset: Optional[MarkdownDataset] = None) -> float:
         """
         Evaluate the model.
 
@@ -225,85 +246,103 @@ class Trainer:
             dataset: Dataset to evaluate on (uses eval_dataset if None)
 
         Returns:
-            Dictionary of evaluation metrics
+            Average evaluation loss
         """
-        if self.trainer is None:
-            raise ValueError("Model not trained yet. Call train() first.")
-
         eval_dataset = dataset if dataset is not None else self.eval_dataset
 
         if eval_dataset is None:
             raise ValueError("No evaluation dataset provided")
 
         logger.info("Evaluating model...")
-        metrics = self.trainer.evaluate(eval_dataset=eval_dataset)
 
-        self.trainer.log_metrics("eval", metrics)
-        self.trainer.save_metrics("eval", metrics)
+        total_loss = 0.0
+        num_batches = 0
 
-        return metrics
+        for batch in eval_dataset.batch_iterate(self.config.training.batch_size, shuffle=False):
+            inputs = mx.array(batch["input_ids"])
+            targets = mx.array(batch["labels"])
+            attention_mask = mx.array(batch["attention_mask"])
+
+            loss = self.loss_fn(self.model, inputs, targets, attention_mask)
+            total_loss += loss.item()
+            num_batches += 1
+
+        avg_loss = total_loss / num_batches
+        return avg_loss
 
     def save_checkpoint(self, checkpoint_path: str):
         """Save model checkpoint."""
         os.makedirs(checkpoint_path, exist_ok=True)
-        self.model.save_pretrained(checkpoint_path)
+
+        # Save model weights
+        weights_path = os.path.join(checkpoint_path, "weights.npz")
+        self.model.save_weights(weights_path)
+
+        # Save config
+        config_path = os.path.join(checkpoint_path, "config.json")
+        with open(config_path, "w") as f:
+            json.dump(
+                {
+                    "model_name": self.config.model.model_name,
+                    "max_length": self.config.model.max_length,
+                    "global_step": self.global_step,
+                    "epoch": self.current_epoch,
+                },
+                f,
+            )
+
+        # Save tokenizer
         self.tokenizer.save_pretrained(checkpoint_path)
+
         logger.info(f"Checkpoint saved to {checkpoint_path}")
 
     def load_checkpoint(self, checkpoint_path: str):
         """Load model checkpoint."""
         logger.info(f"Loading checkpoint from {checkpoint_path}")
-        self.model = AutoModelForCausalLM.from_pretrained(
-            checkpoint_path,
-            torch_dtype=torch.bfloat16 if self.config.training.bf16 else torch.float32,
-        ).to(self.device)
-        self.tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)
+
+        # Load weights
+        weights_path = os.path.join(checkpoint_path, "weights.npz")
+        self.model.load_weights(weights_path)
+
+        # Load config
+        config_path = os.path.join(checkpoint_path, "config.json")
+        with open(config_path, "r") as f:
+            checkpoint_config = json.load(f)
+            self.global_step = checkpoint_config.get("global_step", 0)
+            self.current_epoch = checkpoint_config.get("epoch", 0)
+
         logger.info("Checkpoint loaded successfully")
 
     def generate_text(
         self,
         prompt: str,
         max_length: int = 100,
-        num_return_sequences: int = 1,
         temperature: float = 0.7,
         top_p: float = 0.9,
-    ) -> list[str]:
+    ) -> str:
         """
         Generate text from a prompt.
 
         Args:
             prompt: Input prompt
             max_length: Maximum length of generated text
-            num_return_sequences: Number of sequences to generate
             temperature: Sampling temperature
             top_p: Nucleus sampling parameter
 
         Returns:
-            List of generated texts
+            Generated text
         """
         if self.model is None or self.tokenizer is None:
             raise ValueError("Model not loaded")
 
-        self.model.eval()
+        # Use mlx-lm generate function
+        response = generate(
+            self.model,
+            self.tokenizer,
+            prompt=prompt,
+            max_tokens=max_length,
+            temp=temperature,
+            top_p=top_p,
+        )
 
-        # Encode prompt
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-
-        # Generate
-        with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_length=max_length,
-                num_return_sequences=num_return_sequences,
-                temperature=temperature,
-                top_p=top_p,
-                do_sample=True,
-                pad_token_id=self.tokenizer.eos_token_id,
-            )
-
-        # Decode
-        generated_texts = [
-            self.tokenizer.decode(output, skip_special_tokens=True) for output in outputs
-        ]
-
-        return generated_texts
+        return response

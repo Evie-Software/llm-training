@@ -1,41 +1,39 @@
 """
-Evaluation and testing module for trained LLMs.
+Evaluation and testing module for MLX-trained LLMs.
 Provides comprehensive metrics and testing capabilities.
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from pathlib import Path
 import json
 
-import torch
+import mlx.core as mx
+import mlx.nn as nn
 import numpy as np
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from torch.utils.data import DataLoader, Dataset
+from mlx_lm import load, generate
 from tqdm import tqdm
 
 from llm_training.config import Config
-from llm_training.utils import get_device
+from llm_training.dataset import MarkdownDataset
 
 logger = logging.getLogger(__name__)
 
 
 class Evaluator:
     """
-    Evaluator for LLM models.
+    Evaluator for MLX LLM models.
 
     Provides:
     - Perplexity calculation
     - Loss evaluation
     - Text generation quality assessment
-    - Custom metric computation
     """
 
     def __init__(
         self,
         model_path: str,
         config: Optional[Config] = None,
-        device: Optional[str] = None,
     ):
         """
         Initialize evaluator.
@@ -43,29 +41,51 @@ class Evaluator:
         Args:
             model_path: Path to trained model
             config: Configuration object
-            device: Device to use (auto-detected if None)
         """
         self.model_path = model_path
         self.config = config or Config.get_default()
-        self.device = device or get_device(use_mps=self.config.training.use_mps)
 
         logger.info(f"Loading model from {model_path}")
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_path,
-            torch_dtype=torch.bfloat16 if self.config.training.bf16 else torch.float32,
-        ).to(self.device)
+        self.model, self.tokenizer = load(model_path)
 
-        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-
-        self.model.eval()
         logger.info("Model loaded and ready for evaluation")
+
+    def loss_fn(self, model, inputs, targets, attention_mask):
+        """
+        Compute loss for a batch.
+
+        Args:
+            model: The model
+            inputs: Input token IDs
+            targets: Target token IDs
+            attention_mask: Attention mask
+
+        Returns:
+            Loss value
+        """
+        # Forward pass
+        logits = model(inputs)
+
+        # Compute cross-entropy loss
+        shift_logits = logits[..., :-1, :]
+        shift_targets = targets[..., 1:]
+        shift_mask = attention_mask[..., 1:]
+
+        # Flatten for loss computation
+        vocab_size = shift_logits.shape[-1]
+        loss = nn.losses.cross_entropy(
+            shift_logits.reshape(-1, vocab_size), shift_targets.reshape(-1), reduction="none"
+        )
+
+        # Apply mask and average
+        loss = loss.reshape(shift_targets.shape)
+        loss = (loss * shift_mask).sum() / shift_mask.sum()
+
+        return loss
 
     def calculate_perplexity(
         self,
-        dataset: Dataset,
+        dataset: MarkdownDataset,
         batch_size: int = 8,
     ) -> float:
         """
@@ -80,36 +100,23 @@ class Evaluator:
         """
         logger.info("Calculating perplexity...")
 
-        dataloader = DataLoader(
-            dataset,
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=0,
-        )
-
         total_loss = 0.0
-        total_tokens = 0
+        num_batches = 0
 
-        with torch.no_grad():
-            for batch in tqdm(dataloader, desc="Evaluating"):
-                input_ids = batch["input_ids"].to(self.device)
-                attention_mask = batch["attention_mask"].to(self.device)
-                labels = batch["labels"].to(self.device)
+        for batch in tqdm(
+            dataset.batch_iterate(batch_size, shuffle=False),
+            desc="Calculating perplexity",
+            total=len(dataset) // batch_size,
+        ):
+            inputs = mx.array(batch["input_ids"])
+            targets = mx.array(batch["labels"])
+            attention_mask = mx.array(batch["attention_mask"])
 
-                outputs = self.model(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    labels=labels,
-                )
+            loss = self.loss_fn(self.model, inputs, targets, attention_mask)
+            total_loss += loss.item()
+            num_batches += 1
 
-                # Calculate loss only on non-padding tokens
-                loss = outputs.loss
-                n_tokens = attention_mask.sum().item()
-
-                total_loss += loss.item() * n_tokens
-                total_tokens += n_tokens
-
-        avg_loss = total_loss / total_tokens
+        avg_loss = total_loss / num_batches
         perplexity = np.exp(avg_loss)
 
         logger.info(f"Perplexity: {perplexity:.2f}")
@@ -117,7 +124,7 @@ class Evaluator:
 
     def evaluate_loss(
         self,
-        dataset: Dataset,
+        dataset: MarkdownDataset,
         batch_size: int = 8,
     ) -> Dict[str, float]:
         """
@@ -132,32 +139,23 @@ class Evaluator:
         """
         logger.info("Calculating loss metrics...")
 
-        dataloader = DataLoader(
-            dataset,
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=0,
-        )
-
         total_loss = 0.0
-        n_batches = 0
+        num_batches = 0
 
-        with torch.no_grad():
-            for batch in tqdm(dataloader, desc="Evaluating loss"):
-                input_ids = batch["input_ids"].to(self.device)
-                attention_mask = batch["attention_mask"].to(self.device)
-                labels = batch["labels"].to(self.device)
+        for batch in tqdm(
+            dataset.batch_iterate(batch_size, shuffle=False),
+            desc="Evaluating loss",
+            total=len(dataset) // batch_size,
+        ):
+            inputs = mx.array(batch["input_ids"])
+            targets = mx.array(batch["labels"])
+            attention_mask = mx.array(batch["attention_mask"])
 
-                outputs = self.model(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    labels=labels,
-                )
+            loss = self.loss_fn(self.model, inputs, targets, attention_mask)
+            total_loss += loss.item()
+            num_batches += 1
 
-                total_loss += outputs.loss.item()
-                n_batches += 1
-
-        avg_loss = total_loss / n_batches
+        avg_loss = total_loss / num_batches
 
         return {
             "avg_loss": avg_loss,
@@ -170,7 +168,6 @@ class Evaluator:
         max_length: int = 100,
         temperature: float = 0.7,
         top_p: float = 0.9,
-        num_return_sequences: int = 1,
     ) -> List[Dict[str, str]]:
         """
         Generate text samples from prompts.
@@ -180,7 +177,6 @@ class Evaluator:
             max_length: Maximum generation length
             temperature: Sampling temperature
             top_p: Nucleus sampling parameter
-            num_return_sequences: Number of sequences per prompt
 
         Returns:
             List of dictionaries with prompt and generated text
@@ -190,27 +186,19 @@ class Evaluator:
         results = []
 
         for prompt in tqdm(prompts, desc="Generating"):
-            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    **inputs,
-                    max_length=max_length,
-                    num_return_sequences=num_return_sequences,
-                    temperature=temperature,
-                    top_p=top_p,
-                    do_sample=True,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                )
-
-            generated_texts = [
-                self.tokenizer.decode(output, skip_special_tokens=True) for output in outputs
-            ]
+            generated_text = generate(
+                self.model,
+                self.tokenizer,
+                prompt=prompt,
+                max_tokens=max_length,
+                temp=temperature,
+                top_p=top_p,
+            )
 
             results.append(
                 {
                     "prompt": prompt,
-                    "generated": generated_texts,
+                    "generated": generated_text,
                 }
             )
 
@@ -218,7 +206,7 @@ class Evaluator:
 
     def comprehensive_evaluation(
         self,
-        dataset: Dataset,
+        dataset: MarkdownDataset,
         test_prompts: Optional[List[str]] = None,
         output_path: Optional[str] = None,
     ) -> Dict[str, any]:
@@ -258,41 +246,6 @@ class Evaluator:
 
         return results
 
-    def compare_models(
-        self,
-        other_model_path: str,
-        dataset: Dataset,
-    ) -> Dict[str, Dict[str, float]]:
-        """
-        Compare current model with another model.
-
-        Args:
-            other_model_path: Path to comparison model
-            dataset: Test dataset
-
-        Returns:
-            Dictionary comparing metrics
-        """
-        logger.info(f"Comparing with model at {other_model_path}")
-
-        # Evaluate current model
-        current_metrics = self.evaluate_loss(dataset)
-        current_metrics["model"] = self.model_path
-
-        # Evaluate other model
-        other_evaluator = Evaluator(other_model_path, self.config, self.device)
-        other_metrics = other_evaluator.evaluate_loss(dataset)
-        other_metrics["model"] = other_model_path
-
-        return {
-            "current_model": current_metrics,
-            "comparison_model": other_metrics,
-            "improvement": {
-                "loss": current_metrics["avg_loss"] - other_metrics["avg_loss"],
-                "perplexity": current_metrics["perplexity"] - other_metrics["perplexity"],
-            },
-        }
-
 
 def run_quick_test(
     model_path: str,
@@ -325,7 +278,7 @@ def run_quick_test(
 
     for result in results:
         print(f"Prompt: {result['prompt']}")
-        print(f"Generated: {result['generated'][0]}")
+        print(f"Generated: {result['generated']}")
         print("-" * 80 + "\n")
 
 

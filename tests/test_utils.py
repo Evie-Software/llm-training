@@ -7,8 +7,9 @@ from pathlib import Path
 
 from llm_training.utils import (
     format_number,
-    check_mps_availability,
+    check_mlx_availability,
     cleanup_checkpoints,
+    count_parameters,
 )
 
 
@@ -40,35 +41,35 @@ class TestFormatNumber:
         assert format_number(7_000_000_000) == "7.0B"
 
 
-class TestCheckMPSAvailability:
-    """Test check_mps_availability function."""
+class TestCheckMLXAvailability:
+    """Test check_mlx_availability function."""
 
-    def test_mps_info_structure(self):
-        """Test that MPS info has correct structure."""
-        info = check_mps_availability()
+    def test_mlx_info_structure(self):
+        """Test that MLX info has correct structure."""
+        info = check_mlx_availability()
 
         # Check required keys
-        assert "mps_available" in info
-        assert "mps_built" in info
-        assert "torch_version" in info
+        assert "mlx_available" in info
+        assert "mlx_version" in info
+        assert "device" in info
 
         # Check types
-        assert isinstance(info["mps_available"], bool)
-        assert isinstance(info["mps_built"], bool)
-        assert isinstance(info["torch_version"], str)
+        assert isinstance(info["mlx_available"], bool)
+        assert isinstance(info["mlx_version"], str)
+        assert isinstance(info["device"], str)
 
-    def test_mps_working_field(self):
-        """Test mps_working field."""
-        info = check_mps_availability()
+    def test_mlx_working_field(self):
+        """Test mlx_working field."""
+        info = check_mlx_availability()
 
-        # mps_working should be present
-        assert "mps_working" in info
-        assert isinstance(info["mps_working"], bool)
+        # mlx_working should be present
+        assert "mlx_working" in info
+        assert isinstance(info["mlx_working"], bool)
 
-        # If MPS is not working, there might be an error message
-        if not info["mps_working"] and not info["mps_available"]:
+        # If MLX is not working, there might be an error message
+        if not info["mlx_working"]:
             # This is expected on non-Apple Silicon machines
-            pass
+            assert "error" in info
 
 
 class TestCleanupCheckpoints:
@@ -130,38 +131,29 @@ class TestCleanupCheckpoints:
             assert len(checkpoints) == 2
 
 
-class TestGetDevice:
-    """Test get_device function."""
-
-    def test_get_device(self):
-        """Test getting device."""
-        from llm_training.utils import get_device
-        import torch
-
-        # Get device
-        device = get_device()
-
-        # Should be one of the valid types
-        assert device.type in ["mps", "cuda", "cpu"]
-
-        # Should be a torch device
-        assert isinstance(device, torch.device)
-
-
 class TestCountParameters:
-    """Test count_parameters function."""
+    """Test count_parameters function with MLX models."""
 
-    def test_count_parameters(self):
-        """Test parameter counting."""
-        from llm_training.utils import count_parameters
-        import torch.nn as nn
+    def test_count_parameters_mock(self):
+        """Test parameter counting with mock MLX model."""
 
-        # Create a simple model
-        model = nn.Sequential(
-            nn.Linear(10, 20),  # 10*20 + 20 = 220 params
-            nn.Linear(20, 5),  # 20*5 + 5 = 105 params
-        )
+        # Create a mock model object that mimics MLX model structure
+        class MockModel:
+            def __init__(self):
+                self._params = {
+                    "layer1.weight": type("Param", (), {"size": 200})(),
+                    "layer1.bias": type("Param", (), {"size": 20})(),
+                    "layer2.weight": type("Param", (), {"size": 100})(),
+                    "layer2.bias": type("Param", (), {"size": 5})(),
+                }
 
+            def parameters(self):
+                return self._params
+
+            def trainable_parameters(self):
+                return self._params
+
+        model = MockModel()
         counts = count_parameters(model)
 
         # Check structure
@@ -171,31 +163,41 @@ class TestCountParameters:
         assert "trainable_percent" in counts
 
         # Check values
-        assert counts["total"] == 325  # 220 + 105
+        assert counts["total"] == 325  # 200 + 20 + 100 + 5
         assert counts["trainable"] == 325
         assert counts["frozen"] == 0
         assert counts["trainable_percent"] == 100.0
 
-    def test_count_parameters_with_frozen(self):
-        """Test parameter counting with frozen parameters."""
-        from llm_training.utils import count_parameters
-        import torch.nn as nn
+    def test_count_parameters_with_frozen_mock(self):
+        """Test parameter counting with frozen parameters using mock."""
 
-        model = nn.Sequential(
-            nn.Linear(10, 20),
-            nn.Linear(20, 5),
-        )
+        class MockModelWithFrozen:
+            def __init__(self):
+                self._all_params = {
+                    "layer1.weight": type("Param", (), {"size": 200})(),
+                    "layer1.bias": type("Param", (), {"size": 20})(),
+                    "layer2.weight": type("Param", (), {"size": 100})(),
+                    "layer2.bias": type("Param", (), {"size": 5})(),
+                }
+                # Only layer2 is trainable
+                self._trainable_params = {
+                    "layer2.weight": type("Param", (), {"size": 100})(),
+                    "layer2.bias": type("Param", (), {"size": 5})(),
+                }
 
-        # Freeze first layer
-        for param in model[0].parameters():
-            param.requires_grad = False
+            def parameters(self):
+                return self._all_params
 
+            def trainable_parameters(self):
+                return self._trainable_params
+
+        model = MockModelWithFrozen()
         counts = count_parameters(model)
 
         # Check that frozen parameters are counted correctly
         assert counts["total"] == 325
-        assert counts["trainable"] == 105  # Only second layer
-        assert counts["frozen"] == 220  # First layer
+        assert counts["trainable"] == 105  # Only layer2
+        assert counts["frozen"] == 220  # layer1
         assert counts["trainable_percent"] < 100.0
 
 

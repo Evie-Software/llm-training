@@ -8,11 +8,12 @@ on:
 
 jobs:
   test:
+    # MLX only works on Apple Silicon, so tests only run on macOS
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [macos-latest]
         python-version: ['3.9', '3.10', '3.11']
 
     steps:
@@ -36,12 +37,12 @@ jobs:
         pytest --verbose --tb=short
 
     - name: Run tests with coverage
-      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'
+      if: matrix.os == 'macos-latest' && matrix.python-version == '3.10'
       run: |
         pytest --cov=llm_training --cov-report=xml --cov-report=term
 
     - name: Upload coverage to Codecov
-      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'
+      if: matrix.os == 'macos-latest' && matrix.python-version == '3.10'
       uses: codecov/codecov-action@v3
       with:
         file: ./coverage.xml

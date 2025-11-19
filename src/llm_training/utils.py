@@ -1,5 +1,5 @@
 """
-Utility functions for LLM training.
+Utility functions for MLX-based LLM training.
 """
 
 import os
@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-import torch
+import mlx.core as mx
 import psutil
 
 
@@ -44,65 +44,28 @@ def setup_logging(log_dir: str = "logs", log_file: str = "training.log"):
     root_logger.addHandler(console_handler)
 
 
-def get_device(use_mps: bool = True) -> torch.device:
-    """
-    Get appropriate device for training/inference.
-
-    Args:
-        use_mps: Whether to use MPS (Metal Performance Shaders) for M3
-
-    Returns:
-        torch.device
-    """
-    if use_mps and torch.backends.mps.is_available():
-        device = torch.device("mps")
-        logging.info("Using MPS (Metal Performance Shaders) on Apple Silicon")
-    elif torch.cuda.is_available():
-        device = torch.device("cuda")
-        logging.info(f"Using CUDA GPU: {torch.cuda.get_device_name(0)}")
-    else:
-        device = torch.device("cpu")
-        logging.info("Using CPU")
-
-    return device
-
-
-def estimate_memory(
-    model: torch.nn.Module,
+def estimate_memory_mlx(
+    model,
     batch_size: int,
-    seq_length: int,
     print_info: bool = True,
 ) -> dict:
     """
-    Estimate memory requirements for training.
+    Estimate memory requirements for MLX training.
 
     Args:
-        model: PyTorch model
+        model: MLX model
         batch_size: Batch size
-        seq_length: Sequence length
         print_info: Whether to print information
 
     Returns:
         Dictionary with memory estimates
     """
     # Count parameters
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total_params = sum(p.size for p in model.parameters().values())
+    trainable_params = sum(p.size for p in model.trainable_parameters().values())
 
-    # Estimate model size (in GB)
-    # Assuming bfloat16 (2 bytes per parameter)
-    model_size_gb = (total_params * 2) / (1024**3)
-
-    # Estimate activation memory (rough estimate)
-    # For transformers: batch_size * seq_length * hidden_size * num_layers * 4 (activations) * 2 (bytes)
-    # This is a simplified estimate
-    activation_estimate_gb = (batch_size * seq_length * 768 * 12 * 4 * 2) / (1024**3)
-
-    # Optimizer state (Adam: 2x model parameters for momentum and variance)
-    optimizer_gb = model_size_gb * 2
-
-    # Total estimate
-    total_estimate_gb = model_size_gb + activation_estimate_gb + optimizer_gb
+    # Estimate model size (MLX uses float32 by default = 4 bytes per parameter)
+    model_size_gb = (total_params * 4) / (1024**3)
 
     # Get current available memory
     available_memory_gb = psutil.virtual_memory().available / (1024**3)
@@ -111,23 +74,17 @@ def estimate_memory(
         "total_params": total_params,
         "trainable_params": trainable_params,
         "model_size_gb": model_size_gb,
-        "activation_estimate_gb": activation_estimate_gb,
-        "optimizer_state_gb": optimizer_gb,
-        "total_estimate_gb": total_estimate_gb,
         "available_memory_gb": available_memory_gb,
-        "fits_in_memory": total_estimate_gb < available_memory_gb * 0.8,  # Use 80% as safety margin
+        "fits_in_memory": model_size_gb < available_memory_gb * 0.6,  # 60% safety margin
     }
 
     if print_info:
         print("\n" + "=" * 60)
-        print("MEMORY ESTIMATION")
+        print("MEMORY ESTIMATION (MLX)")
         print("=" * 60)
         print(f"Total parameters: {total_params:,}")
         print(f"Trainable parameters: {trainable_params:,}")
         print(f"Model size: {model_size_gb:.2f} GB")
-        print(f"Estimated activation memory: {activation_estimate_gb:.2f} GB")
-        print(f"Optimizer state: {optimizer_gb:.2f} GB")
-        print(f"Total estimated: {total_estimate_gb:.2f} GB")
         print(f"Available memory: {available_memory_gb:.2f} GB")
 
         if estimates["fits_in_memory"]:
@@ -136,26 +93,26 @@ def estimate_memory(
             print("⚠ WARNING: May exceed available memory!")
             print("  Consider:")
             print("  - Reducing batch size")
-            print("  - Using gradient checkpointing")
             print("  - Using a smaller model")
+            print("  - Using LoRA fine-tuning instead of full training")
 
         print("=" * 60 + "\n")
 
     return estimates
 
 
-def count_parameters(model: torch.nn.Module) -> dict:
+def count_parameters(model) -> dict:
     """
-    Count model parameters.
+    Count MLX model parameters.
 
     Args:
-        model: PyTorch model
+        model: MLX model
 
     Returns:
         Dictionary with parameter counts
     """
-    total = sum(p.numel() for p in model.parameters())
-    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total = sum(p.size for p in model.parameters().values())
+    trainable = sum(p.size for p in model.trainable_parameters().values())
     frozen = total - trainable
 
     return {
@@ -178,30 +135,28 @@ def format_number(num: int) -> str:
         return str(num)
 
 
-def check_mps_availability() -> dict:
+def check_mlx_availability() -> dict:
     """
-    Check MPS (Metal Performance Shaders) availability and configuration.
+    Check MLX availability and configuration.
 
     Returns:
-        Dictionary with MPS information
+        Dictionary with MLX information
     """
     info = {
-        "mps_available": torch.backends.mps.is_available(),
-        "mps_built": torch.backends.mps.is_built(),
-        "torch_version": torch.__version__,
+        "mlx_available": True,  # If we can import mlx, it's available
+        "mlx_version": mx.__version__ if hasattr(mx, "__version__") else "unknown",
+        "device": "Apple Silicon",
     }
 
-    if info["mps_available"]:
-        # Test MPS with a simple operation
-        try:
-            x = torch.ones(1, device="mps")
-            y = x * 2
-            info["mps_working"] = True
-        except Exception as e:
-            info["mps_working"] = False
-            info["mps_error"] = str(e)
-    else:
-        info["mps_working"] = False
+    try:
+        # Test basic MLX operation
+        x = mx.ones((2, 2))
+        y = x * 2
+        mx.eval(y)
+        info["mlx_working"] = True
+    except Exception as e:
+        info["mlx_working"] = False
+        info["error"] = str(e)
 
     return info
 
@@ -215,13 +170,11 @@ def print_system_info():
     # Python version
     print(f"Python version: {sys.version.split()[0]}")
 
-    # PyTorch version
-    print(f"PyTorch version: {torch.__version__}")
-
-    # MPS information
-    mps_info = check_mps_availability()
-    print(f"MPS available: {mps_info['mps_available']}")
-    print(f"MPS working: {mps_info.get('mps_working', False)}")
+    # MLX information
+    mlx_info = check_mlx_availability()
+    print(f"MLX version: {mlx_info.get('mlx_version', 'unknown')}")
+    print(f"MLX working: {mlx_info.get('mlx_working', False)}")
+    print(f"Device: {mlx_info.get('device', 'unknown')}")
 
     # Memory information
     mem = psutil.virtual_memory()
@@ -231,7 +184,8 @@ def print_system_info():
 
     # CPU information
     print(
-        f"CPU cores: {psutil.cpu_count(logical=False)} physical, {psutil.cpu_count(logical=True)} logical"
+        f"CPU cores: {psutil.cpu_count(logical=False)} physical, "
+        f"{psutil.cpu_count(logical=True)} logical"
     )
 
     print("=" * 60 + "\n")
@@ -259,7 +213,7 @@ def cleanup_checkpoints(
     # Find checkpoint directories (usually named checkpoint-XXXX)
     checkpoints = sorted(
         [d for d in checkpoint_path.iterdir() if d.is_dir() and d.name.startswith("checkpoint-")],
-        key=lambda x: int(x.name.split("-")[1]) if x.name.split("-")[1].isdigit() else 0,
+        key=lambda x: (int(x.name.split("-")[1]) if x.name.split("-")[1].isdigit() else 0),
     )
 
     if len(checkpoints) <= keep_last_n:
@@ -285,9 +239,10 @@ if __name__ == "__main__":
     # Test utilities
     print_system_info()
 
-    # Test MPS
-    mps_info = check_mps_availability()
-    if mps_info["mps_working"]:
-        print("✓ MPS is working correctly!")
+    # Test MLX
+    mlx_info = check_mlx_availability()
+    if mlx_info["mlx_working"]:
+        print("✓ MLX is working correctly!")
     else:
-        print("✗ MPS is not available or not working")
+        print("✗ MLX is not available or not working")
+        print(f"Error: {mlx_info.get('error', 'Unknown')}")

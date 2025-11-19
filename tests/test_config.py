@@ -46,13 +46,13 @@ class TestModelConfig:
     def test_default_model(self):
         """Test default model configuration."""
         config = ModelConfig()
-        assert config.model_name == "gpt2"
+        assert config.model_name == "mlx-community/gpt2"
         assert config.max_length == 512
 
     def test_custom_model(self):
         """Test custom model configuration."""
-        config = ModelConfig(model_name="distilgpt2", max_length=256)
-        assert config.model_name == "distilgpt2"
+        config = ModelConfig(model_name="mlx-community/distilgpt2", max_length=256)
+        assert config.model_name == "mlx-community/distilgpt2"
         assert config.max_length == 256
 
 
@@ -63,31 +63,27 @@ class TestTrainingConfig:
         """Test default training configuration."""
         config = TrainingConfig()
         assert config.num_train_epochs == 3
-        assert config.per_device_train_batch_size == 2
-        assert config.gradient_accumulation_steps == 8
-        assert config.bf16 is True
-        assert config.use_mps is True
-        assert config.gradient_checkpointing is True
+        assert config.batch_size == 4  # MLX default
+        assert config.gradient_accumulation_steps == 4
+        assert config.grad_checkpoint is True
 
     def test_memory_optimization_settings(self):
-        """Test memory optimization settings."""
+        """Test memory optimization settings for MLX."""
         config = TrainingConfig()
-        assert config.gradient_checkpointing is True
-        assert config.bf16 is True
-        assert config.dataloader_num_workers == 0  # Important for MPS
+        assert config.grad_checkpoint is True  # MLX gradient checkpointing
+        assert config.batch_size == 4  # Efficient MLX batch size
 
 
 class TestFineTuningConfig:
     """Test FineTuningConfig class."""
 
     def test_lora_defaults(self):
-        """Test LoRA default configuration."""
+        """Test LoRA default configuration for MLX."""
         config = FineTuningConfig()
-        assert config.lora_r == 8
+        assert config.lora_rank == 8
         assert config.lora_alpha == 16
-        assert config.lora_dropout == 0.1
-        assert "q_proj" in config.target_modules
-        assert "v_proj" in config.target_modules
+        assert config.lora_dropout == 0.0
+        assert config.lora_layers == 16  # Number of layers to apply LoRA to
 
 
 class TestConfig:
@@ -108,7 +104,7 @@ class TestConfig:
 
             # Create and save config
             original_config = Config.get_default()
-            original_config.model.model_name = "distilgpt2"
+            original_config.model.model_name = "mlx-community/distilgpt2"
             original_config.training.num_train_epochs = 5
             original_config.to_yaml(yaml_path)
 
@@ -116,7 +112,7 @@ class TestConfig:
             loaded_config = Config.from_yaml(yaml_path)
 
             # Verify
-            assert loaded_config.model.model_name == "distilgpt2"
+            assert loaded_config.model.model_name == "mlx-community/distilgpt2"
             assert loaded_config.training.num_train_epochs == 5
 
     def test_validation(self):
@@ -143,7 +139,7 @@ class TestConfig:
         config = Config.get_default()
 
         # Invalid batch size
-        config.training.per_device_train_batch_size = 0
+        config.training.batch_size = 0
         with pytest.raises(ValueError):
             config.validate()
 
@@ -168,7 +164,7 @@ class TestCreateDefaultConfig:
 
             # Check config is valid
             assert isinstance(config, Config)
-            assert config.model.model_name == "gpt2"
+            assert config.model.model_name == "mlx-community/gpt2"
 
 
 if __name__ == "__main__":
