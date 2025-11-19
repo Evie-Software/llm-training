@@ -1,5 +1,5 @@
 """
-Configuration management for LLM training.
+Configuration management for LLM training with MLX.
 Supports YAML config files with defaults optimized for M3 MacBook Pro (16GB RAM).
 """
 
@@ -17,7 +17,7 @@ class DataConfig:
     raw_data_path: str = "data/raw"
     processed_data_path: str = "data/processed"
     file_extensions: List[str] = field(default_factory=lambda: [".md", ".mdx"])
-    max_length: int = 512  # Maximum sequence length (lower for memory efficiency)
+    max_length: int = 512  # Maximum sequence length
     train_test_split: float = 0.9
     validation_split: float = 0.05
     seed: int = 42
@@ -27,22 +27,21 @@ class DataConfig:
 class ModelConfig:
     """Model configuration."""
 
-    model_name: str = "gpt2"  # Small model suitable for 16GB RAM
+    model_name: str = "mlx-community/gpt2"  # MLX-compatible model
     cache_dir: str = "models/cache"
     output_dir: str = "models/output"
     max_length: int = 512
 
-    # Alternative small models you can try:
-    # - "distilgpt2" (82M params - very small)
-    # - "gpt2" (124M params)
-    # - "gpt2-medium" (355M params - may be tight on 16GB)
-    # - "facebook/opt-125m" (125M params)
-    # - "EleutherAI/pythia-160m" (160M params)
+    # Popular MLX models:
+    # - "mlx-community/gpt2" (124M params)
+    # - "mlx-community/gpt2-medium" (355M params)
+    # - "mlx-community/Llama-2-7b-mlx" (7B params - requires more RAM)
+    # - "mlx-community/Mistral-7B-v0.1-mlx"
 
 
 @dataclass
 class TrainingConfig:
-    """Training configuration optimized for M3 with 16GB RAM."""
+    """Training configuration optimized for M3 with 16GB RAM using MLX."""
 
     # Output
     output_dir: str = "checkpoints"
@@ -50,20 +49,14 @@ class TrainingConfig:
 
     # Training parameters
     num_train_epochs: int = 3
-    per_device_train_batch_size: int = 2  # Small batch size for memory
-    per_device_eval_batch_size: int = 2
-    gradient_accumulation_steps: int = 8  # Effective batch size = 2 * 8 = 16
+    batch_size: int = 4  # MLX can handle larger batches efficiently
+    gradient_accumulation_steps: int = 4  # Effective batch size = 16
 
     # Optimization
-    learning_rate: float = 5e-5
+    learning_rate: float = 1e-5
     weight_decay: float = 0.01
     warmup_steps: int = 500
     max_grad_norm: float = 1.0
-
-    # Memory optimization
-    fp16: bool = False  # Use bf16 instead for M3
-    bf16: bool = True  # Better for M3
-    gradient_checkpointing: bool = True  # Saves memory
 
     # Evaluation and saving
     eval_steps: int = 500
@@ -71,37 +64,34 @@ class TrainingConfig:
     save_total_limit: int = 2  # Keep only 2 checkpoints to save space
     evaluation_strategy: str = "steps"
     save_strategy: str = "steps"
-    load_best_model_at_end: bool = True
-    metric_for_best_model: str = "loss"
 
     # Logging
     logging_steps: int = 100
-    report_to: str = "tensorboard"  # or "wandb"
-
-    # Device
-    use_mps: bool = True  # Use Metal Performance Shaders for M3
-    dataloader_num_workers: int = 0  # 0 for MPS compatibility
+    report_to: str = "none"  # "wandb" or "none"
 
     # Other
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
 
+    # MLX-specific settings
+    grad_checkpoint: bool = True  # Use gradient checkpointing for memory efficiency
+
 
 @dataclass
 class FineTuningConfig:
-    """Fine-tuning configuration using LoRA (Parameter-Efficient Fine-Tuning)."""
+    """Fine-tuning configuration using LoRA with MLX."""
 
     # LoRA parameters
-    lora_r: int = 8  # Rank of the update matrices
+    lora_layers: int = 16  # Number of layers to apply LoRA to
+    lora_rank: int = 8  # Rank of LoRA matrices
     lora_alpha: int = 16  # LoRA scaling factor
-    lora_dropout: float = 0.1
-    target_modules: List[str] = field(default_factory=lambda: ["q_proj", "v_proj"])
+    lora_dropout: float = 0.0  # Dropout for LoRA layers
 
     # Training
     num_train_epochs: int = 3
-    per_device_train_batch_size: int = 4  # Can be larger with LoRA
+    batch_size: int = 4
     gradient_accumulation_steps: int = 4
-    learning_rate: float = 3e-4
+    learning_rate: float = 1e-4
 
     # Output
     output_dir: str = "models/finetuned"
@@ -162,7 +152,7 @@ class Config:
             Path(path).mkdir(parents=True, exist_ok=True)
 
         # Validate batch sizes
-        if self.training.per_device_train_batch_size <= 0:
+        if self.training.batch_size <= 0:
             raise ValueError("Batch size must be positive")
         if self.training.gradient_accumulation_steps <= 0:
             raise ValueError("Gradient accumulation steps must be positive")

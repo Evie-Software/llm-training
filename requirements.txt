@@ -1,15 +1,12 @@
 # Core dependencies for LLM training on M3 MacBook Pro
-# PyTorch with MPS support (Metal Performance Shaders for M3)
-torch>=2.1.0
-torchvision>=0.16.0
-torchaudio>=2.1.0
+# MLX - Apple's ML framework optimized for Apple Silicon
+mlx>=0.4.0
+mlx-lm>=0.4.0  # MLX language model utilities
 
-# Hugging Face ecosystem
+# Hugging Face ecosystem (for tokenizers and model configs)
 transformers>=4.36.0
-datasets>=2.16.0
 tokenizers>=0.15.0
-accelerate>=0.25.0
-peft>=0.7.0  # Parameter-Efficient Fine-Tuning (LoRA, QLoRA)
+huggingface-hub>=0.20.0
 
 # Data processing
 pandas>=2.1.0
@@ -20,7 +17,6 @@ beautifulsoup4>=4.12.0
 lxml>=4.9.0
 
 # Monitoring and visualization
-tensorboard>=2.15.0
 tqdm>=4.66.0
 wandb>=0.16.0  # Optional, can be disabled
 
