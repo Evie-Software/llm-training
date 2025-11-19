@@ -21,6 +21,7 @@ class DataConfig:
     train_test_split: float = 0.9
     validation_split: float = 0.05
     seed: int = 42
+    add_source_prefix: bool = False  # Add [source-name] prefix to distinguish multiple sources
 
 
 @dataclass
