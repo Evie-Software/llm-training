@@ -69,6 +69,7 @@ def main():
         validation_split=config.data.validation_split,
         seed=config.data.seed,
         extensions=config.data.file_extensions,
+        add_source_prefix=config.data.add_source_prefix,
     )
 
     # Create trainer

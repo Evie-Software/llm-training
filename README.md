@@ -275,6 +275,186 @@ If you run out of memory:
 
 ## 🎓 Advanced Topics
 
+### Training with Multiple Documentation Sources
+
+The framework supports training on documentation from multiple projects/products simultaneously. There are two strategies depending on whether you want the model to distinguish between sources:
+
+#### Strategy 1: Source Prefix Tagging (Recommended for Multi-Product)
+
+**Use this when:** Training on multiple related products (e.g., Laravel Framework, Laravel Forge, Laravel Cloud) and you want the model to understand which product each content belongs to.
+
+**Directory Structure:**
+```
+data/raw/
+├── laravel-framework/
+│   ├── getting-started.md
+│   ├── routing.md
+│   └── controllers.md
+├── laravel-forge/
+│   ├── servers.md
+│   ├── deployment.md
+│   └── sites.md
+└── laravel-cloud/
+    ├── introduction.md
+    ├── teams.md
+    └── projects.md
+```
+
+**Configuration:**
+```yaml
+# config.yaml
+data:
+  raw_data_path: "data/raw"
+  add_source_prefix: true  # Enable source tagging
+  max_length: 512
+```
+
+**What Happens:**
+The model learns content with source prefixes:
+- `"[laravel-framework] Routes are defined in the routes directory..."`
+- `"[laravel-forge] Deploying your application to a server..."`
+- `"[laravel-cloud] Teams allow you to collaborate..."`
+
+**Benefits:**
+- ✅ Single model understands all products
+- ✅ Model knows which product each content belongs to
+- ✅ Can generate product-specific responses
+- ✅ Easier deployment (one model vs multiple)
+
+**Usage:**
+```bash
+# Train with source prefixing enabled
+llm-train config -o configs/multi-source.yaml
+# Edit config and set add_source_prefix: true
+llm-train train --config configs/multi-source.yaml
+```
+
+#### Strategy 2: Mixed Training (No Source Distinction)
+
+**Use this when:** Training on documentation that's all related to one ecosystem and you don't need the model to distinguish sources.
+
+**Configuration:**
+```yaml
+# config.yaml
+data:
+  raw_data_path: "data/raw"
+  add_source_prefix: false  # Default - no tagging
+  max_length: 512
+```
+
+**What Happens:**
+All documentation is mixed together without source tags. The model learns general patterns across all content.
+
+**Benefits:**
+- ✅ Simpler - just organize files in subdirectories
+- ✅ Model learns unified knowledge base
+- ✅ Good for supplementary docs, guides, READMEs
+
+**Usage:**
+```bash
+# Standard training (no source prefixes)
+llm-train train --data-dir data/raw
+```
+
+#### Strategy 3: Separate Models per Source
+
+**Use this when:** You need completely isolated models for different products or have very different documentation styles.
+
+**Directory Structure:**
+```
+data/
+├── laravel-framework/
+│   └── *.md files
+├── laravel-forge/
+│   └── *.md files
+└── laravel-cloud/
+    └── *.md files
+```
+
+**Train Separate Models:**
+```bash
+# Framework model
+llm-train train --data-dir data/laravel-framework \
+  --config configs/framework.yaml
+
+# Forge model
+llm-train train --data-dir data/laravel-forge \
+  --config configs/forge.yaml
+
+# Cloud model
+llm-train train --data-dir data/laravel-cloud \
+  --config configs/cloud.yaml
+```
+
+**Benefits:**
+- ✅ Complete isolation between products
+- ✅ Can optimize each model separately
+- ✅ Different model sizes per product complexity
+
+**Drawbacks:**
+- ❌ More models to maintain and deploy
+- ❌ More storage space required
+- ❌ Harder to cross-reference between products
+
+#### Recommendation for Laravel Use Case
+
+For **Laravel Framework + Forge + Cloud** specifically:
+
+**Recommended:** Strategy 1 (Source Prefix Tagging)
+
+```yaml
+# configs/laravel-multi.yaml
+data:
+  raw_data_path: "data/raw"
+  add_source_prefix: true  # Enable this!
+  max_length: 512  # Or 1024 if you have 32GB+ RAM
+
+model:
+  model_name: "mlx-community/gpt2"  # 124M params, good for 16GB+
+```
+
+This gives you:
+1. **Single model** that knows all Laravel products
+2. **Context awareness** - knows when discussing Framework vs Forge vs Cloud
+3. **Better responses** - can say "In Laravel Framework..." vs "In Forge..."
+4. **Easier deployment** - one model, simpler infrastructure
+
+#### How Source Prefixes Work
+
+When you enable `add_source_prefix: true`, the framework automatically:
+
+1. **Extracts source name** from directory structure:
+   - `data/raw/laravel-framework/routing.md` → source name: `laravel-framework`
+   - `data/raw/laravel-forge/servers.md` → source name: `laravel-forge`
+
+2. **Adds prefix to content**:
+   ```
+   Original: "Routes are defined in the routes directory..."
+   Prefixed: "[laravel-framework] Routes are defined in the routes directory..."
+   ```
+
+3. **Model learns the pattern**:
+   - Understands that `[source-name]` indicates the product context
+   - Can generate responses with appropriate context
+   - Differentiates between similar concepts across products
+
+#### Example Queries After Training
+
+With source prefixes enabled:
+
+**Query:** "How do I deploy my application?"
+
+**Model Response:**
+- Understands this could be Framework (local dev) OR Forge (server deployment)
+- Can provide context-specific answers based on training data
+- Learned pattern: `[laravel-forge]` content discusses deployment
+
+**Query:** "Tell me about routing"
+
+**Model Response:**
+- Knows this is primarily a `[laravel-framework]` topic
+- Provides Framework-specific routing information
+
 ### Custom Training Loop
 
 ```python

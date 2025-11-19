@@ -61,6 +61,7 @@ def train_command(args):
         validation_split=config.data.validation_split,
         seed=config.data.seed,
         extensions=config.data.file_extensions,
+        add_source_prefix=config.data.add_source_prefix,
     )
 
     # Create trainer
@@ -121,6 +122,7 @@ def evaluate_command(args):
             data_dir=args.test_data,
             tokenizer=tokenizer,
             max_length=config.data.max_length,
+            add_source_prefix=config.data.add_source_prefix,
         )
 
         results = evaluator.comprehensive_evaluation(
@@ -159,6 +161,7 @@ def finetune_command(args):
         validation_split=config.data.validation_split,
         seed=config.data.seed,
         extensions=config.data.file_extensions,
+        add_source_prefix=config.data.add_source_prefix,
     )
 
     # Create fine-tuner

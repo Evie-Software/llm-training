@@ -113,6 +113,8 @@ class MarkdownDataset:
         tokenizer: PreTrainedTokenizer,
         max_length: int = 512,
         stride: int = 256,
+        add_source_prefix: bool = False,
+        data_root: Optional[str] = None,
     ):
         """
         Initialize the dataset.
@@ -122,17 +124,45 @@ class MarkdownDataset:
             tokenizer: Tokenizer for encoding text
             max_length: Maximum sequence length
             stride: Stride for overlapping chunks (for long documents)
+            add_source_prefix: Add [source-name] prefix based on directory
+            data_root: Root data directory for extracting source names
         """
         self.file_paths = file_paths
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.stride = stride
+        self.add_source_prefix = add_source_prefix
+        self.data_root = Path(data_root) if data_root else None
         self.parser = MarkdownParser()
         self.samples = []
 
         logger.info(f"Loading {len(file_paths)} files...")
+        if self.add_source_prefix:
+            logger.info("Source prefixes enabled - files will be tagged by directory")
         self._process_files()
         logger.info(f"Created {len(self.samples)} training samples")
+
+    def _get_source_name(self, file_path: str) -> str:
+        """
+        Extract source name from file path.
+
+        For path like data/raw/laravel-framework/routing.md,
+        returns "laravel-framework"
+        """
+        path = Path(file_path)
+
+        if self.data_root:
+            try:
+                # Get relative path from data root
+                rel_path = path.relative_to(self.data_root)
+                # Get first directory in the path
+                if len(rel_path.parts) > 1:
+                    return rel_path.parts[0]
+            except ValueError:
+                pass
+
+        # Fallback: use parent directory name
+        return path.parent.name
 
     def _process_files(self):
         """Process all files and create training samples."""
@@ -146,6 +176,11 @@ class MarkdownDataset:
 
                 # Clean content
                 cleaned = self.parser.clean_markdown(content, is_mdx=is_mdx)
+
+                # Add source prefix if enabled
+                if self.add_source_prefix:
+                    source_name = self._get_source_name(file_path)
+                    cleaned = f"[{source_name}] {cleaned}"
 
                 # Tokenize and create chunks
                 tokens = self.tokenizer.encode(cleaned, add_special_tokens=True)
@@ -259,6 +294,7 @@ def prepare_dataset(
     validation_split: float = 0.05,
     seed: int = 42,
     extensions: List[str] = [".md", ".mdx"],
+    add_source_prefix: bool = False,
 ) -> Tuple[MarkdownDataset, MarkdownDataset, MarkdownDataset]:
     """
     Prepare train, validation, and test datasets from markdown files.
@@ -271,6 +307,7 @@ def prepare_dataset(
         validation_split: Proportion of data for validation
         seed: Random seed for reproducibility
         extensions: File extensions to include
+        add_source_prefix: Add [source-name] prefix based on subdirectory
 
     Returns:
         Tuple of (train_dataset, val_dataset, test_dataset)
@@ -298,9 +335,27 @@ def prepare_dataset(
     )
 
     # Create datasets
-    train_dataset = MarkdownDataset(train_files, tokenizer, max_length=max_length)
-    val_dataset = MarkdownDataset(val_files, tokenizer, max_length=max_length)
-    test_dataset = MarkdownDataset(test_files, tokenizer, max_length=max_length)
+    train_dataset = MarkdownDataset(
+        train_files,
+        tokenizer,
+        max_length=max_length,
+        add_source_prefix=add_source_prefix,
+        data_root=data_dir,
+    )
+    val_dataset = MarkdownDataset(
+        val_files,
+        tokenizer,
+        max_length=max_length,
+        add_source_prefix=add_source_prefix,
+        data_root=data_dir,
+    )
+    test_dataset = MarkdownDataset(
+        test_files,
+        tokenizer,
+        max_length=max_length,
+        add_source_prefix=add_source_prefix,
+        data_root=data_dir,
+    )
 
     return train_dataset, val_dataset, test_dataset
 
