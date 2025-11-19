@@ -20,11 +20,12 @@ assignees: ''
 - Framework version: <!-- e.g., 0.1.0 -->
 
 **Dependencies:**
-<!-- Run: pip list | grep -E "torch|transformers|peft" -->
+<!-- Run: pip list | grep -E "mlx|transformers|numpy" -->
 ```
-torch==
+mlx==
+mlx-lm==
 transformers==
-peft==
+numpy==
 ```
 
 ## Steps to Reproduce

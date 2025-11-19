@@ -7,9 +7,9 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="llm-training",
-    version="0.1.0",
+    version="0.2.0",
     author="Your Name",
-    description="LLM training framework optimized for M3 MacBook Pro with 16GB RAM",
+    description="LLM training framework using MLX, optimized for M3 MacBook Pro with 16GB RAM",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/yourusername/llm-training",
@@ -27,17 +27,23 @@ setup(
     ],
     python_requires=">=3.9",
     install_requires=[
-        "torch>=2.1.0",
+        # MLX - Apple's ML framework for Apple Silicon
+        "mlx>=0.4.0",
+        "mlx-lm>=0.4.0",
+        # Hugging Face ecosystem (for tokenizers and model configs)
         "transformers>=4.36.0",
-        "datasets>=2.16.0",
         "tokenizers>=0.15.0",
-        "accelerate>=0.25.0",
-        "peft>=0.7.0",
-        "pandas>=2.1.0",
+        "huggingface-hub>=0.20.0",
+        # Data processing
         "numpy>=1.24.0",
+        "pandas>=2.1.0",
+        # Utilities
         "pyyaml>=6.0",
         "tqdm>=4.66.0",
-        "tensorboard>=2.15.0",
+        "psutil>=5.9.0",
+        # Markdown processing
+        "markdown>=3.5.0",
+        "beautifulsoup4>=4.12.0",
     ],
     extras_require={
         "dev": [
@@ -46,6 +52,7 @@ setup(
             "black>=23.12.0",
             "flake8>=6.1.0",
             "mypy>=1.7.0",
+            "bandit[toml]>=1.7.0",
         ],
         "docs": [
             "mkdocs>=1.5.0",

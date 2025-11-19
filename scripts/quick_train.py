@@ -113,10 +113,10 @@ def main():
     print("TRAINING COMPLETED!")
     print("=" * 70)
     print(f"\nModel saved to: {config.model.output_dir}")
-    print("\nTo use your trained model:")
-    print(f"  from transformers import AutoModelForCausalLM, AutoTokenizer")
-    print(f"  model = AutoModelForCausalLM.from_pretrained('{config.model.output_dir}')")
-    print(f"  tokenizer = AutoTokenizer.from_pretrained('{config.model.output_dir}')")
+    print("\nTo use your trained model with MLX:")
+    print(f"  from mlx_lm import load, generate")
+    print(f"  model, tokenizer = load('{config.model.output_dir}')")
+    print(f"  text = generate(model, tokenizer, prompt='Your prompt', max_tokens=100)")
 
 
 if __name__ == "__main__":
