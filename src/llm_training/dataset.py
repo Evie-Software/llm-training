@@ -292,8 +292,8 @@ def load_processed_dataset(
     max_length: int = 512,
 ) -> MarkdownDataset:
     """Load processed dataset from disk."""
-    # nosec B614 - Loading user's own processed data, not untrusted input
-    samples = torch.load(input_path, weights_only=False)
+    # Loading user's own processed data, not untrusted input
+    samples = torch.load(input_path, weights_only=False)  # nosec B614
     dataset = MarkdownDataset([], tokenizer, max_length=max_length)
     dataset.samples = samples
     logger.info(f"Dataset loaded from {input_path}")

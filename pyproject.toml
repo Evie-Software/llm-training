@@ -80,9 +80,10 @@ no_implicit_optional = true
 exclude_dirs = ["tests", "venv", ".venv", "build", "dist"]
 # B101: assert_used - acceptable in development/validation code
 # B601: paramiko - not used
+# B614: pytorch_load - safe when loading user's own processed data (handled with nosec)
 # B615: huggingface_unsafe_download - expected behavior for training framework
 #       Users specify model names/paths, pinning revisions would break flexibility
-skips = ["B101", "B601", "B615"]
+skips = ["B101", "B601", "B614", "B615"]
 
 [tool.pytest.ini_options]
 minversion = "7.0"

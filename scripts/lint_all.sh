@@ -54,7 +54,7 @@ run_check "Flake8 (linting)" \
 
 # 3. Bandit security check (optional, can fail)
 echo "Running Bandit (security checks)..."
-if bandit -r src/ -f screen -ll 2>&1; then
+if bandit -r src/ -c pyproject.toml -f screen -ll 2>&1; then
     echo -e "${GREEN}✓${NC} Bandit passed"
 else
     echo -e "${YELLOW}⚠${NC} Bandit found potential issues (review manually)"
