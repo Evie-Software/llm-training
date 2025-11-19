@@ -124,16 +124,13 @@ This will check:
 
 ### 1. Prepare Your Data
 
-Place your `.md` or `.mdx` files in `data/raw/`. The framework will:
+Place your `.md` or `.mdx` files in `data/raw/`. The framework will automatically:
 - Recursively find all markdown files
 - Clean and parse MDX components
 - Convert to plain text while preserving structure
 - Split into train/validation/test sets
 
-```bash
-# Check your data
-llm-train prepare --data-dir data/raw
-```
+Data preparation happens automatically when you run the `train` command.
 
 ### 2. Configure Training
 
