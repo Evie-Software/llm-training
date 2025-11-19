@@ -17,7 +17,7 @@ class DataConfig:
     raw_data_path: str = "data/raw"
     processed_data_path: str = "data/processed"
     file_extensions: List[str] = field(default_factory=lambda: [".md", ".mdx"])
-    max_length: int = 512  # Maximum sequence length
+    max_length: int = 512  # Maximum sequence length (recommend ≤2048 for 16GB RAM)
     train_test_split: float = 0.9
     validation_split: float = 0.05
     seed: int = 42
@@ -162,6 +162,24 @@ class Config:
             raise ValueError("Train/test split must be between 0 and 1")
         if not (0 < self.data.validation_split < 1):
             raise ValueError("Validation split must be between 0 and 1")
+
+        # Validate sequence lengths (critical for 16GB M3)
+        if self.data.max_length > 2048:
+            raise ValueError(
+                f"max_length ({self.data.max_length}) exceeds 2048 tokens. "
+                "For 16GB M3 MacBook, sequences >2048 tokens can cause OOM errors. "
+                "Reduce max_length to ≤2048 for stable training."
+            )
+        if self.data.max_length > 1024:
+            print(
+                f"⚠ WARNING: max_length is {self.data.max_length}. "
+                "For 16GB RAM, consider using ≤1024 for better stability."
+            )
+        if self.model.max_length > 2048:
+            raise ValueError(
+                f"model.max_length ({self.model.max_length}) exceeds 2048 tokens. "
+                "For 16GB M3 MacBook, reduce to ≤2048."
+            )
 
         print("✓ Configuration validated successfully")
 

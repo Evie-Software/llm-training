@@ -8,7 +8,9 @@ data:
   file_extensions:
     - ".md"
     - ".mdx"
-  max_length: 512
+  max_length: 512  # Safe for 16GB RAM. Max recommended: 2048
+  # Note: Long documents are automatically split into overlapping chunks
+  # This creates more high-quality training samples while staying under max_length
   train_test_split: 0.9
   validation_split: 0.05
   seed: 42
