@@ -1,18 +1,17 @@
 """
-Dataset preparation for markdown (.md and .mdx) files.
+Dataset preparation for markdown (.md and .mdx) files using MLX.
 Handles parsing, cleaning, and tokenization of documentation files.
 """
 
 import os
 import re
+import pickle
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import logging
 
-import torch
-from torch.utils.data import Dataset
+import numpy as np
 from transformers import PreTrainedTokenizer
-from datasets import Dataset as HFDataset
 import markdown
 from bs4 import BeautifulSoup
 
@@ -105,8 +104,8 @@ class MarkdownParser:
         return content.strip()
 
 
-class MarkdownDataset(Dataset):
-    """PyTorch Dataset for markdown files."""
+class MarkdownDataset:
+    """Dataset for markdown files compatible with MLX."""
 
     def __init__(
         self,
@@ -162,13 +161,15 @@ class MarkdownDataset(Dataset):
                                 self.max_length - len(chunk)
                             )
 
+                        # Create attention mask
+                        attention_mask = [
+                            1 if token != self.tokenizer.pad_token_id else 0 for token in chunk
+                        ]
+
                         self.samples.append(
                             {
-                                "input_ids": chunk,
-                                "attention_mask": [
-                                    1 if token != self.tokenizer.pad_token_id else 0
-                                    for token in chunk
-                                ],
+                                "input_ids": np.array(chunk, dtype=np.int32),
+                                "attention_mask": np.array(attention_mask, dtype=np.int32),
                                 "source_file": file_path,
                             }
                         )
@@ -180,13 +181,40 @@ class MarkdownDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+    def __getitem__(self, idx: int) -> Dict[str, np.ndarray]:
+        """Get a single sample."""
         sample = self.samples[idx]
         return {
-            "input_ids": torch.tensor(sample["input_ids"], dtype=torch.long),
-            "attention_mask": torch.tensor(sample["attention_mask"], dtype=torch.long),
-            "labels": torch.tensor(sample["input_ids"], dtype=torch.long),  # For language modeling
+            "input_ids": sample["input_ids"],
+            "attention_mask": sample["attention_mask"],
+            "labels": sample["input_ids"],  # For language modeling
         }
+
+    def batch_iterate(self, batch_size: int, shuffle: bool = False):
+        """
+        Iterate over batches of data.
+
+        Args:
+            batch_size: Number of samples per batch
+            shuffle: Whether to shuffle the data
+
+        Yields:
+            Dictionary containing batched arrays
+        """
+        indices = np.arange(len(self.samples))
+        if shuffle:
+            np.random.shuffle(indices)
+
+        for i in range(0, len(indices), batch_size):
+            batch_indices = indices[i : i + batch_size]
+            batch = {
+                "input_ids": np.stack([self.samples[idx]["input_ids"] for idx in batch_indices]),
+                "attention_mask": np.stack(
+                    [self.samples[idx]["attention_mask"] for idx in batch_indices]
+                ),
+                "labels": np.stack([self.samples[idx]["input_ids"] for idx in batch_indices]),
+            }
+            yield batch
 
 
 def collect_markdown_files(
@@ -247,8 +275,6 @@ def prepare_dataset(
     Returns:
         Tuple of (train_dataset, val_dataset, test_dataset)
     """
-    import random
-
     # Collect files
     file_paths = collect_markdown_files(data_dir, extensions=extensions)
 
@@ -256,8 +282,8 @@ def prepare_dataset(
         raise ValueError(f"No markdown files found in {data_dir}")
 
     # Shuffle files
-    random.seed(seed)
-    random.shuffle(file_paths)
+    np.random.seed(seed)
+    np.random.shuffle(file_paths)
 
     # Split files
     n_train = int(len(file_paths) * train_split)
@@ -282,7 +308,8 @@ def prepare_dataset(
 def save_processed_dataset(dataset: MarkdownDataset, output_path: str):
     """Save processed dataset to disk."""
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    torch.save(dataset.samples, output_path)
+    with open(output_path, "wb") as f:
+        pickle.dump(dataset.samples, f)
     logger.info(f"Dataset saved to {output_path}")
 
 
@@ -292,8 +319,8 @@ def load_processed_dataset(
     max_length: int = 512,
 ) -> MarkdownDataset:
     """Load processed dataset from disk."""
-    # Loading user's own processed data, not untrusted input
-    samples = torch.load(input_path, weights_only=False)  # nosec B614
+    with open(input_path, "rb") as f:
+        samples = pickle.load(f)
     dataset = MarkdownDataset([], tokenizer, max_length=max_length)
     dataset.samples = samples
     logger.info(f"Dataset loaded from {input_path}")

@@ -1,42 +1,36 @@
 """
-Fine-tuning module using LoRA (Low-Rank Adaptation).
-Memory-efficient fine-tuning for resource-constrained environments.
+Fine-tuning module using LoRA with MLX.
+Memory-efficient fine-tuning optimized for Apple Silicon.
 """
 
 import logging
-from typing import Optional, Dict
+from typing import Optional
 from pathlib import Path
+import json
 
-import torch
-from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    TrainingArguments,
-    Trainer,
-    DataCollatorForLanguageModeling,
-)
-from peft import (
-    LoraConfig,
-    get_peft_model,
-    prepare_model_for_kbit_training,
-    PeftModel,
-)
-from torch.utils.data import Dataset
+import mlx.core as mx
+import mlx.nn as nn
+import mlx.optimizers as optim
+from mlx_lm import load, generate
+from mlx_lm.tuner.trainer import TrainingArgs, train
+from mlx_lm.tuner.lora import LoRALinear
+from tqdm import tqdm
 
 from llm_training.config import Config, FineTuningConfig
-from llm_training.utils import setup_logging, get_device
+from llm_training.dataset import MarkdownDataset
+from llm_training.utils import setup_logging
 
 logger = logging.getLogger(__name__)
 
 
 class LoRAFineTuner:
     """
-    LoRA (Low-Rank Adaptation) Fine-Tuner.
+    LoRA Fine-Tuner using MLX.
 
-    LoRA is a parameter-efficient fine-tuning method that:
-    - Reduces memory usage by only training a small subset of parameters
-    - Allows fine-tuning large models on limited hardware
-    - Maintains model quality while being much faster
+    LoRA (Low-Rank Adaptation) is a parameter-efficient fine-tuning method:
+    - Reduces memory usage by only training adapter layers
+    - Faster training than full fine-tuning
+    - Can be merged back into base model
 
     Perfect for M3 MacBook Pro with 16GB RAM!
     """
@@ -45,14 +39,14 @@ class LoRAFineTuner:
         self,
         base_model_path: str,
         config: Config,
-        train_dataset: Dataset,
-        eval_dataset: Optional[Dataset] = None,
+        train_dataset: MarkdownDataset,
+        eval_dataset: Optional[MarkdownDataset] = None,
     ):
         """
         Initialize LoRA fine-tuner.
 
         Args:
-            base_model_path: Path to base model (can be pretrained or your trained model)
+            base_model_path: Path to base model
             config: Configuration
             train_dataset: Training dataset
             eval_dataset: Evaluation dataset
@@ -65,92 +59,91 @@ class LoRAFineTuner:
         # Setup logging
         setup_logging(config.finetuning.logging_dir)
 
-        # Get device
-        self.device = get_device(use_mps=config.training.use_mps)
-        logger.info(f"Using device: {self.device}")
+        logger.info(f"Using base model: {base_model_path}")
 
-        # Initialize model components
-        self.tokenizer = None
-        self.model = None
-        self.trainer = None
+        # Load model and tokenizer
+        self._load_model()
 
-        # Load and prepare model
-        self._load_and_prepare_model()
+        # Apply LoRA
+        self._apply_lora()
 
-    def _load_and_prepare_model(self):
-        """Load base model and apply LoRA configuration."""
+        # Setup optimizer
+        self._setup_optimizer()
+
+        logger.info("LoRA fine-tuner initialized successfully")
+
+    def _load_model(self):
+        """Load base model and tokenizer."""
         logger.info(f"Loading base model from {self.base_model_path}")
+        self.model, self.tokenizer = load(self.base_model_path)
 
-        # Load tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(self.base_model_path)
+    def _apply_lora(self):
+        """Apply LoRA to model layers."""
+        logger.info("Applying LoRA adapters...")
 
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+        # Freeze base model parameters
+        self.model.freeze()
 
-        # Load base model
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.base_model_path,
-            torch_dtype=torch.bfloat16,
-            device_map={"": self.device},
-        )
+        # Apply LoRA to specified layers
+        # MLX-LM typically applies LoRA to attention layers
+        for layer in self.model.layers[-self.config.finetuning.lora_layers :]:
+            # Apply LoRA to attention layers
+            if hasattr(layer, "self_attn"):
+                self_attn = layer.self_attn
+                if hasattr(self_attn, "q_proj"):
+                    self_attn.q_proj = LoRALinear.from_linear(
+                        self_attn.q_proj,
+                        r=self.config.finetuning.lora_rank,
+                        scale=self.config.finetuning.lora_alpha / self.config.finetuning.lora_rank,
+                        dropout=self.config.finetuning.lora_dropout,
+                    )
+                if hasattr(self_attn, "v_proj"):
+                    self_attn.v_proj = LoRALinear.from_linear(
+                        self_attn.v_proj,
+                        r=self.config.finetuning.lora_rank,
+                        scale=self.config.finetuning.lora_alpha / self.config.finetuning.lora_rank,
+                        dropout=self.config.finetuning.lora_dropout,
+                    )
 
-        # Configure LoRA
-        lora_config = LoraConfig(
-            r=self.config.finetuning.lora_r,
-            lora_alpha=self.config.finetuning.lora_alpha,
-            target_modules=self.config.finetuning.target_modules,
-            lora_dropout=self.config.finetuning.lora_dropout,
-            bias="none",
-            task_type="CAUSAL_LM",
-        )
-
-        # Apply LoRA to model
-        self.model = get_peft_model(self.model, lora_config)
-
-        # Print trainable parameters
+        # Count parameters
         self._print_trainable_parameters()
 
     def _print_trainable_parameters(self):
         """Print information about trainable parameters."""
-        trainable_params = 0
-        all_param = 0
+        total_params = sum(p.size for p in self.model.parameters().values())
+        trainable_params = sum(p.size for p in self.model.trainable_parameters().values())
 
-        for _, param in self.model.named_parameters():
-            all_param += param.numel()
-            if param.requires_grad:
-                trainable_params += param.numel()
-
-        percentage = 100 * trainable_params / all_param
+        percentage = 100 * trainable_params / total_params if total_params > 0 else 0
 
         logger.info(
             f"Trainable params: {trainable_params:,} || "
-            f"All params: {all_param:,} || "
+            f"All params: {total_params:,} || "
             f"Trainable%: {percentage:.2f}%"
         )
 
-    def _create_training_args(self) -> TrainingArguments:
-        """Create training arguments for fine-tuning."""
-        return TrainingArguments(
-            output_dir=self.config.finetuning.output_dir,
-            num_train_epochs=self.config.finetuning.num_train_epochs,
-            per_device_train_batch_size=self.config.finetuning.per_device_train_batch_size,
-            gradient_accumulation_steps=self.config.finetuning.gradient_accumulation_steps,
+    def _setup_optimizer(self):
+        """Setup optimizer for fine-tuning."""
+        self.optimizer = optim.AdamW(
             learning_rate=self.config.finetuning.learning_rate,
-            bf16=True,
-            logging_dir=self.config.finetuning.logging_dir,
-            logging_steps=100,
-            save_steps=500,
-            save_total_limit=2,
-            evaluation_strategy="steps" if self.eval_dataset else "no",
-            eval_steps=500 if self.eval_dataset else None,
-            save_strategy="steps",
-            load_best_model_at_end=True if self.eval_dataset else False,
-            report_to="tensorboard",
-            warmup_steps=100,
-            weight_decay=0.01,
-            # MPS optimization
-            dataloader_num_workers=0,
         )
+
+    def loss_fn(self, model, inputs, targets, attention_mask):
+        """Compute loss."""
+        logits = model(inputs)
+
+        shift_logits = logits[..., :-1, :]
+        shift_targets = targets[..., 1:]
+        shift_mask = attention_mask[..., 1:]
+
+        vocab_size = shift_logits.shape[-1]
+        loss = nn.losses.cross_entropy(
+            shift_logits.reshape(-1, vocab_size), shift_targets.reshape(-1), reduction="none"
+        )
+
+        loss = loss.reshape(shift_targets.shape)
+        loss = (loss * shift_mask).sum() / shift_mask.sum()
+
+        return loss
 
     def finetune(self):
         """Fine-tune the model using LoRA."""
@@ -159,82 +152,83 @@ class LoRAFineTuner:
         if self.eval_dataset:
             logger.info(f"Evaluation samples: {len(self.eval_dataset)}")
 
-        # Create training arguments
-        training_args = self._create_training_args()
+        steps_per_epoch = len(self.train_dataset) // self.config.finetuning.batch_size
+        total_steps = steps_per_epoch * self.config.finetuning.num_train_epochs
 
-        # Create data collator
-        data_collator = DataCollatorForLanguageModeling(
-            tokenizer=self.tokenizer,
-            mlm=False,
-        )
+        global_step = 0
 
-        # Create trainer
-        self.trainer = Trainer(
-            model=self.model,
-            args=training_args,
-            train_dataset=self.train_dataset,
-            eval_dataset=self.eval_dataset,
-            data_collator=data_collator,
-        )
+        for epoch in range(self.config.finetuning.num_train_epochs):
+            logger.info(f"Epoch {epoch + 1}/{self.config.finetuning.num_train_epochs}")
 
-        # Train
-        try:
-            train_result = self.trainer.train()
+            epoch_loss = 0.0
+            progress_bar = tqdm(
+                self.train_dataset.batch_iterate(self.config.finetuning.batch_size, shuffle=True),
+                total=steps_per_epoch,
+                desc=f"Fine-tuning Epoch {epoch + 1}",
+            )
 
-            # Save fine-tuned model
-            self.model.save_pretrained(self.config.finetuning.output_dir)
-            self.tokenizer.save_pretrained(self.config.finetuning.output_dir)
+            for batch in progress_bar:
+                # Convert to MLX arrays
+                inputs = mx.array(batch["input_ids"])
+                targets = mx.array(batch["labels"])
+                attention_mask = mx.array(batch["attention_mask"])
 
-            # Log metrics
-            metrics = train_result.metrics
-            self.trainer.log_metrics("train", metrics)
-            self.trainer.save_metrics("train", metrics)
+                # Compute loss and gradients
+                loss_and_grad_fn = nn.value_and_grad(self.model, self.loss_fn)
+                loss, grads = loss_and_grad_fn(self.model, inputs, targets, attention_mask)
 
-            logger.info("Fine-tuning completed successfully!")
-            logger.info(f"Model saved to {self.config.finetuning.output_dir}")
+                # Update only LoRA parameters
+                self.optimizer.update(self.model, grads)
+                mx.eval(self.model.parameters(), self.optimizer.state)
 
-            return train_result
+                epoch_loss += loss.item()
+                global_step += 1
 
-        except Exception as e:
-            logger.error(f"Fine-tuning failed: {e}")
-            raise
+                progress_bar.set_postfix({"loss": f"{loss.item():.4f}"})
 
-    def merge_and_save(self, output_path: str):
+            avg_epoch_loss = epoch_loss / steps_per_epoch
+            logger.info(f"Epoch {epoch + 1} completed. Average loss: {avg_epoch_loss:.4f}")
+
+        # Save fine-tuned model
+        self.save_model(self.config.finetuning.output_dir)
+
+        logger.info("Fine-tuning completed successfully!")
+        logger.info(f"Model saved to {self.config.finetuning.output_dir}")
+
+        return {"final_loss": avg_epoch_loss}
+
+    def save_model(self, output_path: str):
         """
-        Merge LoRA weights with base model and save.
-
-        This creates a standalone model that doesn't require LoRA at inference.
+        Save fine-tuned model.
 
         Args:
-            output_path: Path to save merged model
+            output_path: Path to save model
         """
-        logger.info("Merging LoRA weights with base model...")
-
-        # Merge weights
-        merged_model = self.model.merge_and_unload()
-
-        # Save merged model
         Path(output_path).mkdir(parents=True, exist_ok=True)
-        merged_model.save_pretrained(output_path)
+
+        # Save LoRA weights
+        weights_path = Path(output_path) / "lora_weights.npz"
+        lora_weights = {k: v for k, v in self.model.parameters().items() if "lora" in k}
+        mx.savez(str(weights_path), **lora_weights)
+
+        # Save config
+        config_path = Path(output_path) / "lora_config.json"
+        with open(config_path, "w") as f:
+            json.dump(
+                {
+                    "base_model": self.base_model_path,
+                    "lora_rank": self.config.finetuning.lora_rank,
+                    "lora_alpha": self.config.finetuning.lora_alpha,
+                    "lora_layers": self.config.finetuning.lora_layers,
+                },
+                f,
+                indent=2,
+            )
+
+        # Save tokenizer
         self.tokenizer.save_pretrained(output_path)
 
-        logger.info(f"Merged model saved to {output_path}")
-
-    def evaluate(self) -> Dict[str, float]:
-        """Evaluate fine-tuned model."""
-        if self.trainer is None:
-            raise ValueError("Model not fine-tuned yet. Call finetune() first.")
-
-        if self.eval_dataset is None:
-            raise ValueError("No evaluation dataset provided")
-
-        logger.info("Evaluating fine-tuned model...")
-        metrics = self.trainer.evaluate()
-
-        self.trainer.log_metrics("eval", metrics)
-        self.trainer.save_metrics("eval", metrics)
-
-        return metrics
+        logger.info(f"LoRA model saved to {output_path}")
 
     def generate_text(
         self,
@@ -255,56 +249,18 @@ class LoRAFineTuner:
         Returns:
             Generated text
         """
-        self.model.eval()
+        response = generate(
+            self.model,
+            self.tokenizer,
+            prompt=prompt,
+            max_tokens=max_length,
+            temp=temperature,
+            top_p=top_p,
+        )
 
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-
-        with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_length=max_length,
-                temperature=temperature,
-                top_p=top_p,
-                do_sample=True,
-                pad_token_id=self.tokenizer.eos_token_id,
-            )
-
-        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        return generated_text
-
-
-def load_finetuned_model(
-    model_path: str,
-    device: Optional[str] = None,
-) -> tuple[PeftModel, AutoTokenizer]:
-    """
-    Load a fine-tuned LoRA model.
-
-    Args:
-        model_path: Path to fine-tuned model
-        device: Device to load on
-
-    Returns:
-        Tuple of (model, tokenizer)
-    """
-    logger.info(f"Loading fine-tuned model from {model_path}")
-
-    if device is None:
-        device = get_device()
-
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        torch_dtype=torch.bfloat16,
-        device_map={"": device},
-    )
-
-    logger.info("Model loaded successfully")
-    return model, tokenizer
+        return response
 
 
 if __name__ == "__main__":
-    # Example usage
-    print("LoRA Fine-Tuning Module")
-    print("See examples/finetune_example.py for usage examples")
+    print("LoRA Fine-Tuning Module for MLX")
+    print("See examples for usage")

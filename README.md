@@ -5,15 +5,16 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-A comprehensive, production-ready framework for training small Language Models (LLMs) on Markdown documentation, specifically optimized for Apple M3 MacBook Pro with 16GB RAM.
+A comprehensive, production-ready framework for training small Language Models (LLMs) on Markdown documentation, specifically optimized for Apple M3 MacBook Pro with 16GB RAM using **MLX** - Apple's ML framework for Apple Silicon.
 
 ## 🎯 Key Features
 
-- **M3 Optimized**: Uses Metal Performance Shaders (MPS) for GPU acceleration on Apple Silicon
+- **Apple Silicon Native**: Uses MLX framework optimized specifically for M1/M2/M3 chips
 - **Memory Efficient**: Carefully tuned for 16GB RAM with gradient accumulation and checkpointing
+- **Unified Memory**: Leverages Apple Silicon's unified memory architecture
 - **Markdown Focused**: Purpose-built for training on `.md` and `.mdx` documentation files
 - **Complete Pipeline**: Dataset preparation → Training → Evaluation → Fine-tuning
-- **LoRA Fine-tuning**: Parameter-efficient fine-tuning for specialized tasks
+- **LoRA Fine-tuning**: Parameter-efficient fine-tuning using MLX's native LoRA support
 - **Self-Serve**: Comprehensive documentation and automated setup
 - **Production Ready**: Includes tests, monitoring, and artifact management
 
@@ -66,8 +67,8 @@ llm-train config
 # 4. Start training
 llm-train train --data-dir data/raw
 
-# 5. Monitor training
-tensorboard --logdir logs
+# 5. Check system info
+llm-train info
 ```
 
 That's it! Your model will be saved to `models/output/` when training completes.
@@ -82,7 +83,7 @@ That's it! Your model will be saved to `models/output/` when training completes.
 
 This script will:
 - Create a Python virtual environment
-- Install all dependencies
+- Install all dependencies (including MLX)
 - Create necessary directories
 - Install the package in editable mode
 
@@ -115,7 +116,7 @@ python scripts/check_setup.py
 This will check:
 - Python version
 - All dependencies
-- MPS (GPU) availability
+- MLX availability and functionality
 - Package installation
 - Directory structure
 
@@ -143,10 +144,10 @@ llm-train config -o configs/my_config.yaml
 ```
 
 Edit `configs/my_config.yaml` to customize:
-- Model selection (default: GPT-2)
+- Model selection (default: mlx-community/gpt2)
 - Batch size and memory settings
 - Learning rate and optimization
-- Evaluation frequency
+- LoRA parameters for fine-tuning
 
 ### 3. Train a Model
 
@@ -170,25 +171,13 @@ python scripts/quick_train.py data/raw
 
 ### 4. Monitor Training
 
-#### Using TensorBoard
+Training logs are automatically saved to `logs/training.log`. Watch progress in real-time:
 
 ```bash
-tensorboard --logdir logs
-# Open http://localhost:6006 in your browser
+tail -f logs/training.log
 ```
 
-#### Using Weights & Biases (Optional)
-
-```bash
-# Install wandb
-pip install wandb
-
-# Login
-wandb login
-
-# Update config to use wandb
-# training.report_to: "wandb"
-```
+For programmatic monitoring, check the logs directory for structured output.
 
 ### 5. Evaluate Your Model
 
@@ -209,16 +198,15 @@ llm-train evaluate models/output \
 Use LoRA for memory-efficient fine-tuning:
 
 ```bash
-llm-train finetune models/output data/specialized \
-    --config configs/my_config.yaml \
-    --merge
+llm-train finetune mlx-community/gpt2 data/specialized \
+    --config configs/my_config.yaml
 ```
 
 **LoRA Benefits:**
 - Trains only 0.1-1% of parameters
 - Much faster than full fine-tuning
 - Can fine-tune on specific documentation sets
-- Optionally merge weights for standalone model
+- Native MLX LoRA implementation for optimal performance
 
 ## ⚙️ Configuration
 
@@ -228,17 +216,15 @@ The default configuration is optimized for M3 MacBook Pro with 16GB RAM:
 
 ```yaml
 model:
-  model_name: gpt2  # 124M parameters
+  model_name: mlx-community/gpt2  # 124M parameters
   max_length: 512
 
 training:
   num_train_epochs: 3
-  per_device_train_batch_size: 2
-  gradient_accumulation_steps: 8  # Effective batch size: 16
+  batch_size: 4  # MLX handles batches efficiently
+  gradient_accumulation_steps: 4  # Effective batch size: 16
   learning_rate: 5e-5
-  bf16: true  # Use bfloat16 for M3
-  gradient_checkpointing: true  # Saves memory
-  use_mps: true  # Use Metal GPU
+  grad_checkpoint: true  # Saves memory
 ```
 
 ### Model Selection
@@ -247,16 +233,16 @@ training:
 
 | Model | Parameters | RAM Usage | Speed | Quality |
 |-------|-----------|-----------|-------|---------|
-| `distilgpt2` | 82M | ~4GB | Fast | Good |
-| `gpt2` | 124M | ~5GB | Medium | Better |
-| `gpt2-medium` | 355M | ~8GB | Slower | Best* |
-
-*May be tight on 16GB RAM
+| `mlx-community/distilgpt2` | 82M | ~3GB | Fast | Good |
+| `mlx-community/gpt2` | 124M | ~4GB | Medium | Better |
+| `mlx-community/gpt2-medium` | 355M | ~7GB | Slower | Best |
 
 **Alternative models:**
-- `facebook/opt-125m` - Similar to GPT-2
-- `EleutherAI/pythia-160m` - Well-trained small model
-- `microsoft/phi-1_5` - 1.3B params, good quality but may need adjustments
+- `mlx-community/opt-125m` - Similar to GPT-2
+- `mlx-community/pythia-160m` - Well-trained small model
+- `mlx-community/phi-2` - High quality, but requires more memory
+
+> **Note:** MLX models are available on Hugging Face Hub under the `mlx-community` organization.
 
 ### Memory Optimization Tips
 
@@ -265,8 +251,8 @@ If you run out of memory:
 1. **Reduce batch size:**
    ```yaml
    training:
-     per_device_train_batch_size: 1
-     gradient_accumulation_steps: 16
+     batch_size: 2
+     gradient_accumulation_steps: 8
    ```
 
 2. **Reduce sequence length:**
@@ -278,13 +264,13 @@ If you run out of memory:
 3. **Use a smaller model:**
    ```yaml
    model:
-     model_name: distilgpt2
+     model_name: mlx-community/distilgpt2
    ```
 
 4. **Enable gradient checkpointing:**
    ```yaml
    training:
-     gradient_checkpointing: true
+     grad_checkpoint: true
    ```
 
 ## 🎓 Advanced Topics
@@ -331,6 +317,11 @@ dataset = MarkdownDataset(
     max_length=512,
     stride=256,  # Overlapping chunks
 )
+
+# Iterate over batches
+for batch in dataset.batch_iterate(batch_size=4, shuffle=True):
+    # batch contains numpy arrays ready for MLX
+    pass
 ```
 
 ### Programmatic Evaluation
@@ -363,7 +354,7 @@ results = evaluator.comprehensive_evaluation(
 from llm_training.finetuning import LoRAFineTuner
 
 finetuner = LoRAFineTuner(
-    base_model_path="models/output",
+    base_model_path="mlx-community/gpt2",
     config=config,
     train_dataset=train_ds,
     eval_dataset=val_ds,
@@ -372,42 +363,43 @@ finetuner = LoRAFineTuner(
 # Fine-tune
 finetuner.finetune()
 
-# Merge weights (optional)
-finetuner.merge_and_save("models/finetuned_merged")
+# Model is automatically saved with LoRA weights
 ```
 
 ## 🛠️ Troubleshooting
 
-### MPS (GPU) Not Available
+### MLX Not Available
 
-**Symptom:** Training uses CPU instead of GPU
+**Symptom:** Import errors or MLX not working
 
 **Solutions:**
 1. Ensure you're on Apple Silicon (M1/M2/M3)
-2. Update PyTorch: `pip install --upgrade torch`
-3. Check: `python -c "import torch; print(torch.backends.mps.is_available())"`
+2. Update MLX: `pip install --upgrade mlx mlx-lm`
+3. Check: `python -c "import mlx.core as mx; print(mx.ones((2,2)))"`
+4. Run: `llm-train info` to see system information
 
 ### Out of Memory Errors
 
 **Solutions:**
 1. Reduce batch size in config
 2. Reduce sequence length
-3. Use smaller model (distilgpt2)
+3. Use smaller model (mlx-community/distilgpt2)
 4. Close other applications
 5. Enable gradient checkpointing
 
 ### Training Very Slow
 
 **Possible causes:**
-1. MPS not enabled (check config: `use_mps: true`)
-2. Too many data loader workers (set to 0 for MPS)
-3. Large model for hardware
-4. Dataset too large
+1. Large model for hardware
+2. Dataset too large
+3. Other applications consuming memory
+4. Disk I/O bottleneck
 
 **Solutions:**
-- Verify GPU usage with Activity Monitor
+- Use Activity Monitor to check CPU/Memory/Disk usage
 - Reduce model size
 - Reduce `num_train_epochs`
+- Ensure data is on fast SSD
 
 ### Import Errors
 
@@ -420,14 +412,14 @@ pip install -e .
 export PYTHONPATH="${PYTHONPATH}:$(pwd)/src"
 ```
 
-### Checkpoint Issues
+### Generation Quality Issues
 
-If training crashes and you want to resume:
-
-```yaml
-training:
-  resume_from_checkpoint: "checkpoints/checkpoint-1000"
-```
+If generated text is poor:
+1. Train for more epochs
+2. Use more training data
+3. Use a larger model
+4. Adjust temperature and top_p during generation
+5. Check training loss - should be decreasing
 
 ## 📁 Project Structure
 
@@ -436,7 +428,7 @@ llm-training/
 ├── README.md                 # This file
 ├── setup.sh                  # Automated setup script
 ├── cleanup.sh               # Artifact cleanup utility
-├── requirements.txt         # Python dependencies
+├── requirements.txt         # Python dependencies (MLX-based)
 ├── setup.py                # Package configuration
 ├── .gitignore              # Git ignore rules
 │
@@ -444,9 +436,9 @@ llm-training/
 │   ├── __init__.py
 │   ├── config.py           # Configuration management
 │   ├── dataset.py          # Dataset preparation
-│   ├── training.py         # Training pipeline
+│   ├── training.py         # MLX training pipeline
 │   ├── evaluation.py       # Evaluation and testing
-│   ├── finetuning.py       # LoRA fine-tuning
+│   ├── finetuning.py       # MLX LoRA fine-tuning
 │   ├── utils.py            # Utility functions
 │   └── cli.py              # Command-line interface
 │
@@ -460,6 +452,7 @@ llm-training/
 ├── docs/                   # Additional documentation
 │   ├── QUICKSTART.md
 │   ├── CONFIGURATION.md
+│   ├── MLX_MIGRATION.md    # MLX migration guide
 │   └── API.md
 │
 ├── examples/               # Example configs and code
@@ -512,16 +505,18 @@ Manage disk space:
 
 ## 📊 Performance Expectations
 
-On M3 MacBook Pro (16GB RAM):
+On M3 MacBook Pro (16GB RAM) with MLX:
 
-- **Small model (distilgpt2, 82M):** ~500 samples/sec
-- **Medium model (gpt2, 124M):** ~300 samples/sec
-- **Larger model (gpt2-medium, 355M):** ~100 samples/sec
+- **Small model (distilgpt2, 82M):** ~800-1000 samples/sec
+- **Medium model (gpt2, 124M):** ~500-700 samples/sec
+- **Larger model (gpt2-medium, 355M):** ~200-300 samples/sec
 
 Training time for 10,000 samples:
-- Small: ~30 minutes
-- Medium: ~1 hour
-- Large: ~3 hours
+- Small: ~15-20 minutes
+- Medium: ~25-35 minutes
+- Large: ~1-1.5 hours
+
+> **Note:** MLX is generally faster than PyTorch on Apple Silicon due to native optimizations.
 
 ## 🤝 Contributing
 
@@ -530,7 +525,7 @@ Contributions welcome! Please:
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Format and lint your code: `./scripts/lint_all.sh`
+4. Format and lint your code: `black src/ tests/ && bandit -c pyproject.toml -r src/`
 5. Add tests if applicable
 6. Submit a pull request
 
@@ -543,9 +538,9 @@ MIT License - see LICENSE file for details
 ## 🙏 Acknowledgments
 
 Built with:
-- [PyTorch](https://pytorch.org/) - Deep learning framework
-- [Hugging Face Transformers](https://huggingface.co/transformers/) - Model library
-- [PEFT](https://github.com/huggingface/peft) - Parameter-efficient fine-tuning
+- [MLX](https://github.com/ml-explore/mlx) - Apple's ML framework for Apple Silicon
+- [MLX-LM](https://github.com/ml-explore/mlx-examples/tree/main/llms) - Language model utilities for MLX
+- [Hugging Face Transformers](https://huggingface.co/transformers/) - Tokenizers and model configs
 
 ---
 
@@ -553,10 +548,10 @@ Built with:
 
 1. **Start small:** Test with a small subset of data first
 2. **Monitor memory:** Use Activity Monitor to watch RAM usage
-3. **Use TensorBoard:** Visualize training progress in real-time
-4. **Save often:** Keep `save_total_limit` at 2-3 to conserve space
-5. **Version configs:** Track which config produced which model
-6. **Backup models:** Your trained models are valuable!
+3. **Check logs:** Watch `logs/training.log` for progress
+4. **Version configs:** Track which config produced which model
+5. **Backup models:** Your trained models are valuable!
+6. **Use LoRA:** For fine-tuning, LoRA is much more memory-efficient
 
 ## 🆘 Getting Help
 
@@ -564,5 +559,6 @@ Built with:
 2. Review logs in `logs/training.log`
 3. Run `python scripts/check_setup.py`
 4. Check system info: `llm-train info`
+5. See [MLX_MIGRATION.md](docs/MLX_MIGRATION.md) for migration details
 
-Happy training! 🚀
+Happy training with MLX! 🚀

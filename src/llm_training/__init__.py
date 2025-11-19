@@ -1,9 +1,9 @@
 """
-LLM Training Framework
+LLM Training Framework using MLX
 Optimized for M3 MacBook Pro with 16GB RAM
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from llm_training.config import Config
 from llm_training.dataset import MarkdownDataset, prepare_dataset
