@@ -35,7 +35,9 @@ class MarkdownParser:
             Cleaned markdown content
         """
         # Remove JSX imports
-        content = re.sub(r"^import\s+.*?from\s+['\"].*?['\"];?\s*$", "", content, flags=re.MULTILINE)
+        content = re.sub(
+            r"^import\s+.*?from\s+['\"].*?['\"];?\s*$", "", content, flags=re.MULTILINE
+        )
 
         # Remove JSX export statements
         content = re.sub(r"^export\s+.*?;?\s*$", "", content, flags=re.MULTILINE)
@@ -163,7 +165,10 @@ class MarkdownDataset(Dataset):
                         self.samples.append(
                             {
                                 "input_ids": chunk,
-                                "attention_mask": [1 if token != self.tokenizer.pad_token_id else 0 for token in chunk],
+                                "attention_mask": [
+                                    1 if token != self.tokenizer.pad_token_id else 0
+                                    for token in chunk
+                                ],
                                 "source_file": file_path,
                             }
                         )
@@ -262,7 +267,9 @@ def prepare_dataset(
     val_files = file_paths[n_train : n_train + n_val]
     test_files = file_paths[n_train + n_val :]
 
-    logger.info(f"Dataset split: {len(train_files)} train, {len(val_files)} val, {len(test_files)} test")
+    logger.info(
+        f"Dataset split: {len(train_files)} train, {len(val_files)} val, {len(test_files)} test"
+    )
 
     # Create datasets
     train_dataset = MarkdownDataset(train_files, tokenizer, max_length=max_length)
@@ -285,7 +292,8 @@ def load_processed_dataset(
     max_length: int = 512,
 ) -> MarkdownDataset:
     """Load processed dataset from disk."""
-    samples = torch.load(input_path)
+    # nosec B614 - Loading user's own processed data, not untrusted input
+    samples = torch.load(input_path, weights_only=False)
     dataset = MarkdownDataset([], tokenizer, max_length=max_length)
     dataset.samples = samples
     logger.info(f"Dataset loaded from {input_path}")

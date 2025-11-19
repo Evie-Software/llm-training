@@ -144,13 +144,13 @@ class TestConfig:
 
         # Invalid batch size
         config.training.per_device_train_batch_size = 0
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             config.validate()
 
         # Reset and test invalid split
         config = Config.get_default()
         config.data.train_test_split = 1.5
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             config.validate()
 
 

@@ -24,12 +24,8 @@ def setup_logging(log_dir: str = "logs", log_file: str = "training.log"):
     log_path = Path(log_dir) / log_file
 
     # Create formatters
-    file_formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
-    console_formatter = logging.Formatter(
-        "%(levelname)s - %(message)s"
-    )
+    file_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    console_formatter = logging.Formatter("%(levelname)s - %(message)s")
 
     # File handler
     file_handler = logging.FileHandler(log_path)
@@ -234,7 +230,9 @@ def print_system_info():
     print(f"RAM usage: {mem.percent}%")
 
     # CPU information
-    print(f"CPU cores: {psutil.cpu_count(logical=False)} physical, {psutil.cpu_count(logical=True)} logical")
+    print(
+        f"CPU cores: {psutil.cpu_count(logical=False)} physical, {psutil.cpu_count(logical=True)} logical"
+    )
 
     print("=" * 60 + "\n")
 
@@ -278,6 +276,7 @@ def cleanup_checkpoints(
             logging.info(f"Would delete: {checkpoint}")
         else:
             import shutil
+
             shutil.rmtree(checkpoint)
             logging.info(f"Deleted: {checkpoint}")
 

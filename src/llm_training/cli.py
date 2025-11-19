@@ -262,7 +262,9 @@ def main():
     finetune_parser.add_argument("base_model", help="Path to base model")
     finetune_parser.add_argument("data_dir", help="Directory containing training data")
     finetune_parser.add_argument("--config", help="Path to configuration file")
-    finetune_parser.add_argument("--merge", action="store_true", help="Merge and save standalone model")
+    finetune_parser.add_argument(
+        "--merge", action="store_true", help="Merge and save standalone model"
+    )
 
     # Info command
     info_parser = subparsers.add_parser("info", help="Show system information")
@@ -291,6 +293,7 @@ def main():
     except Exception as e:
         print(f"\n✗ Error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

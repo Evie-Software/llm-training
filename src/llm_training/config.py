@@ -162,12 +162,16 @@ class Config:
             Path(path).mkdir(parents=True, exist_ok=True)
 
         # Validate batch sizes
-        assert self.training.per_device_train_batch_size > 0, "Batch size must be positive"
-        assert self.training.gradient_accumulation_steps > 0, "Gradient accumulation steps must be positive"
+        if self.training.per_device_train_batch_size <= 0:
+            raise ValueError("Batch size must be positive")
+        if self.training.gradient_accumulation_steps <= 0:
+            raise ValueError("Gradient accumulation steps must be positive")
 
         # Validate splits
-        assert 0 < self.data.train_test_split < 1, "Train/test split must be between 0 and 1"
-        assert 0 < self.data.validation_split < 1, "Validation split must be between 0 and 1"
+        if not (0 < self.data.train_test_split < 1):
+            raise ValueError("Train/test split must be between 0 and 1")
+        if not (0 < self.data.validation_split < 1):
+            raise ValueError("Validation split must be between 0 and 1")
 
         print("✓ Configuration validated successfully")
 

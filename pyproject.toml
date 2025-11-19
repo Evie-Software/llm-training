@@ -78,7 +78,11 @@ no_implicit_optional = true
 
 [tool.bandit]
 exclude_dirs = ["tests", "venv", ".venv", "build", "dist"]
-skips = ["B101", "B601"]
+# B101: assert_used - acceptable in development/validation code
+# B601: paramiko - not used
+# B615: huggingface_unsafe_download - expected behavior for training framework
+#       Users specify model names/paths, pinning revisions would break flexibility
+skips = ["B101", "B601", "B615"]
 
 [tool.pytest.ini_options]
 minversion = "7.0"

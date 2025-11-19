@@ -152,7 +152,9 @@ def print_system_info():
     print(f"Total RAM: {mem.total / (1024**3):.2f} GB")
     print(f"Available RAM: {mem.available / (1024**3):.2f} GB")
 
-    print(f"CPU Cores: {psutil.cpu_count(logical=False)} physical, {psutil.cpu_count(logical=True)} logical")
+    print(
+        f"CPU Cores: {psutil.cpu_count(logical=False)} physical, {psutil.cpu_count(logical=True)} logical"
+    )
 
 
 def main():

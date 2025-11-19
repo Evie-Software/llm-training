@@ -204,8 +204,7 @@ class Evaluator:
                 )
 
             generated_texts = [
-                self.tokenizer.decode(output, skip_special_tokens=True)
-                for output in outputs
+                self.tokenizer.decode(output, skip_special_tokens=True) for output in outputs
             ]
 
             results.append(
