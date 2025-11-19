@@ -4,6 +4,7 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+import numpy as np
 
 from llm_training.dataset import (
     MarkdownParser,
@@ -159,16 +160,14 @@ class TestMarkdownDataset:
         sample = dataset[0]
         assert "input_ids" in sample
         assert "attention_mask" in sample
-        assert "labels" in sample
 
-        # Check tensor shapes
+        # Check array shapes (MLX uses numpy arrays)
         assert sample["input_ids"].shape[0] == 128
         assert sample["attention_mask"].shape[0] == 128
 
     def test_dataset_getitem(self, sample_files):
         """Test getting items from dataset."""
         from transformers import AutoTokenizer
-        import torch
 
         tokenizer = AutoTokenizer.from_pretrained("gpt2")
         tokenizer.pad_token = tokenizer.eos_token
@@ -182,15 +181,42 @@ class TestMarkdownDataset:
         # Get first item
         item = dataset[0]
 
-        # Check types
-        assert isinstance(item["input_ids"], torch.Tensor)
-        assert isinstance(item["attention_mask"], torch.Tensor)
-        assert isinstance(item["labels"], torch.Tensor)
+        # Check types (should be numpy arrays for MLX)
+        assert isinstance(item["input_ids"], np.ndarray)
+        assert isinstance(item["attention_mask"], np.ndarray)
 
         # Check dtypes
-        assert item["input_ids"].dtype == torch.long
-        assert item["attention_mask"].dtype == torch.long
-        assert item["labels"].dtype == torch.long
+        assert item["input_ids"].dtype == np.int32
+        assert item["attention_mask"].dtype == np.int32
+
+    def test_batch_iterate(self, sample_files):
+        """Test batch iteration."""
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        tokenizer.pad_token = tokenizer.eos_token
+
+        dataset = MarkdownDataset(
+            file_paths=sample_files,
+            tokenizer=tokenizer,
+            max_length=128,
+        )
+
+        # Test batch iteration
+        batch_size = 2
+        batches = list(dataset.batch_iterate(batch_size=batch_size))
+
+        assert len(batches) > 0
+
+        # Check first batch structure
+        batch = batches[0]
+        assert "input_ids" in batch
+        assert "attention_mask" in batch
+        assert "labels" in batch
+
+        # Check batch is stacked numpy arrays
+        assert isinstance(batch["input_ids"], np.ndarray)
+        assert batch["input_ids"].ndim == 2  # (batch_size, seq_len)
 
 
 class TestCollectMarkdownFiles:

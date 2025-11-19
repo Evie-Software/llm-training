@@ -37,33 +37,29 @@ def check_package(package_name, import_name=None):
         return False
 
 
-def check_torch_mps():
-    """Check PyTorch MPS availability."""
-    print("\nChecking PyTorch MPS (Metal Performance Shaders)...")
+def check_mlx():
+    """Check MLX availability."""
+    print("\nChecking MLX (Apple's ML framework)...")
 
     try:
-        import torch
+        import mlx.core as mx
 
-        print(f"  PyTorch version: {torch.__version__}")
-        print(f"  MPS built: {torch.backends.mps.is_built()}")
-        print(f"  MPS available: {torch.backends.mps.is_available()}")
+        print(f"  MLX version: {mx.__version__ if hasattr(mx, '__version__') else 'unknown'}")
 
-        if torch.backends.mps.is_available():
-            try:
-                # Test MPS with simple operation
-                x = torch.ones(1, device="mps")
-                y = x * 2
-                print("  ✓ MPS is working correctly!")
-                return True
-            except Exception as e:
-                print(f"  ✗ MPS test failed: {e}")
-                return False
-        else:
-            print("  ⚠ MPS not available (not on Apple Silicon?)")
+        try:
+            # Test MLX with simple operation
+            x = mx.ones((2, 2))
+            y = x * 2
+            mx.eval(y)
+            print("  ✓ MLX is working correctly!")
+            return True
+        except Exception as e:
+            print(f"  ✗ MLX test failed: {e}")
             return False
 
     except ImportError:
-        print("  ✗ PyTorch not installed")
+        print("  ✗ MLX not installed")
+        print("    Install with: pip install mlx mlx-lm")
         return False
 
 
@@ -72,13 +68,10 @@ def check_dependencies():
     print("\nChecking required packages...")
 
     packages = [
-        ("torch", "torch"),
+        ("mlx", "mlx.core"),
+        ("mlx-lm", "mlx_lm"),
         ("transformers", "transformers"),
-        ("datasets", "datasets"),
         ("tokenizers", "tokenizers"),
-        ("accelerate", "accelerate"),
-        ("peft", "peft"),
-        ("pandas", "pandas"),
         ("numpy", "numpy"),
         ("pyyaml", "yaml"),
         ("tqdm", "tqdm"),
@@ -160,7 +153,7 @@ def print_system_info():
 def main():
     """Run all checks."""
     print("=" * 70)
-    print("LLM TRAINING SETUP VERIFICATION")
+    print("LLM TRAINING SETUP VERIFICATION (MLX)")
     print("=" * 70)
 
     all_ok = True
@@ -171,8 +164,9 @@ def main():
     # Dependencies
     all_ok &= check_dependencies()
 
-    # PyTorch MPS
-    mps_ok = check_torch_mps()
+    # MLX
+    mlx_ok = check_mlx()
+    all_ok &= mlx_ok
 
     # LLM training package
     all_ok &= check_llm_training_package()
@@ -187,7 +181,7 @@ def main():
     print("\n" + "=" * 70)
     if all_ok:
         print("✓ ALL CHECKS PASSED!")
-        print("\nYour environment is ready for LLM training.")
+        print("\nYour environment is ready for MLX-based LLM training.")
         print("\nNext steps:")
         print("1. Add your markdown files to data/raw/")
         print("2. Create a config: llm-train config")
@@ -197,10 +191,11 @@ def main():
         print("\nPlease fix the issues above before proceeding.")
         print("Run './setup.sh' to install dependencies.")
 
-    if not mps_ok:
-        print("\n⚠ WARNING: MPS not available")
-        print("Training will use CPU, which will be significantly slower.")
-        print("For M3 Mac, ensure you have PyTorch 2.0+ installed.")
+    if not mlx_ok:
+        print("\n⚠ WARNING: MLX not available")
+        print("Training will not work without MLX.")
+        print("Ensure you're on Apple Silicon (M1/M2/M3) and run:")
+        print("  pip install mlx mlx-lm")
 
     print("=" * 70)
 
