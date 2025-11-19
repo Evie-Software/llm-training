@@ -9,7 +9,7 @@ setup(
     name="llm-training",
     version="0.2.0",
     author="Your Name",
-    description="LLM training framework using MLX, optimized for M3 MacBook Pro with 16GB RAM",
+    description="LLM training framework using MLX, for Apple Silicon with auto-detection",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/yourusername/llm-training",

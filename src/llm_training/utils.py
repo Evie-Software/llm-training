@@ -161,8 +161,90 @@ def check_mlx_availability() -> dict:
     return info
 
 
+def get_system_capabilities() -> dict:
+    """
+    Detect system capabilities and recommend optimal training settings.
+
+    Returns:
+        Dictionary with system info and recommended settings
+    """
+    import platform
+
+    mem = psutil.virtual_memory()
+    total_ram_gb = mem.total / (1024**3)
+    available_ram_gb = mem.available / (1024**3)
+
+    # Detect chip type
+    chip_info = platform.processor()
+    chip_type = "Apple Silicon" if "arm" in chip_info.lower() else "Unknown"
+
+    # Try to detect specific M-series chip
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['sysctl', '-n', 'machdep.cpu.brand_string'],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        if result.returncode == 0:
+            brand = result.stdout.strip()
+            if "Apple" in brand:
+                chip_type = brand.split()[1] if len(brand.split()) > 1 else "Apple Silicon"
+    except Exception:
+        pass
+
+    # Calculate recommended settings based on total RAM
+    # Conservative approach: use ~30% of total RAM for model + activations
+    if total_ram_gb < 10:
+        # 8GB system
+        recommendations = {
+            "batch_size": 1,
+            "max_length": 256,
+            "gradient_accumulation_steps": 16,
+            "max_model_size": "small (distilgpt2)",
+            "warning": "Low RAM detected. Training larger models may be unstable.",
+        }
+    elif total_ram_gb < 20:
+        # 16GB system
+        recommendations = {
+            "batch_size": 2,
+            "max_length": 512,
+            "gradient_accumulation_steps": 8,
+            "max_model_size": "medium (gpt2, gpt2-medium with care)",
+            "warning": None,
+        }
+    elif total_ram_gb < 40:
+        # 32GB system
+        recommendations = {
+            "batch_size": 4,
+            "max_length": 1024,
+            "gradient_accumulation_steps": 4,
+            "max_model_size": "large (gpt2-medium, gpt2-large)",
+            "warning": None,
+        }
+    else:
+        # 64GB+ system
+        recommendations = {
+            "batch_size": 8,
+            "max_length": 2048,
+            "gradient_accumulation_steps": 2,
+            "max_model_size": "very large (llama-2-7b, mistral-7b)",
+            "warning": None,
+        }
+
+    return {
+        "total_ram_gb": round(total_ram_gb, 1),
+        "available_ram_gb": round(available_ram_gb, 1),
+        "chip_type": chip_type,
+        "cpu_cores_physical": psutil.cpu_count(logical=False),
+        "cpu_cores_logical": psutil.cpu_count(logical=True),
+        "recommended": recommendations,
+    }
+
+
 def print_system_info():
-    """Print system information."""
+    """Print system information with recommendations."""
     print("\n" + "=" * 60)
     print("SYSTEM INFORMATION")
     print("=" * 60)
@@ -170,23 +252,35 @@ def print_system_info():
     # Python version
     print(f"Python version: {sys.version.split()[0]}")
 
+    # Get system capabilities
+    caps = get_system_capabilities()
+
+    # Chip and RAM
+    print(f"Chip: {caps['chip_type']}")
+    print(f"Total RAM: {caps['total_ram_gb']} GB")
+    print(f"Available RAM: {caps['available_ram_gb']} GB")
+    print(
+        f"CPU cores: {caps['cpu_cores_physical']} physical, "
+        f"{caps['cpu_cores_logical']} logical"
+    )
+
     # MLX information
     mlx_info = check_mlx_availability()
     print(f"MLX version: {mlx_info.get('mlx_version', 'unknown')}")
     print(f"MLX working: {mlx_info.get('mlx_working', False)}")
-    print(f"Device: {mlx_info.get('device', 'unknown')}")
 
-    # Memory information
-    mem = psutil.virtual_memory()
-    print(f"Total RAM: {mem.total / (1024**3):.2f} GB")
-    print(f"Available RAM: {mem.available / (1024**3):.2f} GB")
-    print(f"RAM usage: {mem.percent}%")
+    # Recommendations
+    print("\n" + "-" * 60)
+    print("RECOMMENDED SETTINGS FOR YOUR SYSTEM")
+    print("-" * 60)
+    rec = caps['recommended']
+    print(f"Batch size: {rec['batch_size']}")
+    print(f"Max sequence length: {rec['max_length']} tokens")
+    print(f"Gradient accumulation: {rec['gradient_accumulation_steps']} steps")
+    print(f"Recommended models: {rec['max_model_size']}")
 
-    # CPU information
-    print(
-        f"CPU cores: {psutil.cpu_count(logical=False)} physical, "
-        f"{psutil.cpu_count(logical=True)} logical"
-    )
+    if rec['warning']:
+        print(f"\n⚠️  {rec['warning']}")
 
     print("=" * 60 + "\n")
 
