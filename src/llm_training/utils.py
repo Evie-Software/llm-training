@@ -180,18 +180,20 @@ def get_system_capabilities() -> dict:
 
     # Try to detect specific M-series chip
     try:
-        import subprocess
-        result = subprocess.run(
-            ['sysctl', '-n', 'machdep.cpu.brand_string'],
+        import subprocess  # nosec B404  # Safe: used only for chip detection
+
+        # Safe: hardcoded sysctl command, no user input
+        result = subprocess.run(  # nosec B603, B607
+            ["sysctl", "-n", "machdep.cpu.brand_string"],
             capture_output=True,
             text=True,
-            timeout=2
+            timeout=2,
         )
         if result.returncode == 0:
             brand = result.stdout.strip()
             if "Apple" in brand:
                 chip_type = brand.split()[1] if len(brand.split()) > 1 else "Apple Silicon"
-    except Exception:
+    except Exception:  # nosec B110  # Intentional: fallback to generic chip detection
         pass
 
     # Calculate recommended settings based on total RAM
@@ -260,8 +262,7 @@ def print_system_info():
     print(f"Total RAM: {caps['total_ram_gb']} GB")
     print(f"Available RAM: {caps['available_ram_gb']} GB")
     print(
-        f"CPU cores: {caps['cpu_cores_physical']} physical, "
-        f"{caps['cpu_cores_logical']} logical"
+        f"CPU cores: {caps['cpu_cores_physical']} physical, " f"{caps['cpu_cores_logical']} logical"
     )
 
     # MLX information
@@ -273,13 +274,13 @@ def print_system_info():
     print("\n" + "-" * 60)
     print("RECOMMENDED SETTINGS FOR YOUR SYSTEM")
     print("-" * 60)
-    rec = caps['recommended']
+    rec = caps["recommended"]
     print(f"Batch size: {rec['batch_size']}")
     print(f"Max sequence length: {rec['max_length']} tokens")
     print(f"Gradient accumulation: {rec['gradient_accumulation_steps']} steps")
     print(f"Recommended models: {rec['max_model_size']}")
 
-    if rec['warning']:
+    if rec["warning"]:
         print(f"\n⚠️  {rec['warning']}")
 
     print("=" * 60 + "\n")
