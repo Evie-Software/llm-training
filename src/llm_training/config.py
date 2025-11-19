@@ -28,17 +28,21 @@ class DataConfig:
 class ModelConfig:
     """Model configuration."""
 
-    model_name: str = "mlx-community/gpt2"  # MLX-compatible model
+    model_name: str = "mlx-community/gpt2-base-mlx"  # MLX-compatible model
     cache_dir: str = "models/cache"
     output_dir: str = "models/output"
     max_length: int = 0  # 0 = auto-detect based on available RAM
 
-    # Popular MLX models by size:
-    # - "mlx-community/distilgpt2" (82M params - good for 8-16GB RAM)
-    # - "mlx-community/gpt2" (124M params - good for 16-32GB RAM)
-    # - "mlx-community/gpt2-medium" (355M params - needs 24GB+ RAM)
-    # - "mlx-community/gpt2-large" (774M params - needs 32GB+ RAM)
-    # - "mlx-community/Llama-2-7b-mlx" (7B params - needs 48GB+ RAM)
+    # Available MLX models on Hugging Face (mlx-community organization):
+    # Small models (good for 8-16GB RAM):
+    # - "mlx-community/gpt2-base-mlx" (124M params - default)
+    # - "mlx-community/deepseek-coder-1.3b-base-mlx" (1.3B params - code-focused)
+    # Medium models (needs 24-32GB+ RAM):
+    # - "viktor2698/gpt2-medium-mlx-8Bit" (355M params - 8-bit quantized)
+    # - "MCES10/gpt2-large-mlx-fp16" (774M params - fp16)
+    # Large models (needs 48GB+ RAM):
+    # - "MCES10/gpt2-xl-mlx-fp16" (1.5B params - fp16)
+    # Note: Many more models available at https://huggingface.co/models?library=mlx
 
 
 @dataclass
