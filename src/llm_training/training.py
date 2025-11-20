@@ -361,13 +361,12 @@ class Trainer:
             raise ValueError("Model not loaded")
 
         # Use mlx-lm generate function
+        # Note: temperature and top_p removed - not supported in current mlx_lm version
         response = generate(
             self.model,
             self.tokenizer,
             prompt=prompt,
             max_tokens=max_length,
-            temperature=temperature,
-            top_p=top_p,
         )
 
         return response
