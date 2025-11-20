@@ -280,13 +280,28 @@ class Trainer:
         weights_path = os.path.join(checkpoint_path, "model.safetensors")
         mx.save_safetensors(weights_path, dict(mlx.utils.tree_flatten(self.model.parameters())))
 
-        # Save model config
+        # Save model config - mlx_lm models have args attribute
         model_config_path = os.path.join(checkpoint_path, "config.json")
-        if hasattr(self.model, "config"):
-            import json
-
+        if hasattr(self.model, "args"):
+            # Convert model args to dict for saving
+            model_config = (
+                vars(self.model.args) if hasattr(self.model.args, "__dict__") else self.model.args
+            )
             with open(model_config_path, "w") as f:
-                json.dump(self.model.config.__dict__, f, indent=2)
+                json.dump(model_config, f, indent=2)
+            logger.info("Saved model config from model.args")
+        elif hasattr(self.model, "config"):
+            # Fallback to config attribute
+            model_config = (
+                vars(self.model.config)
+                if hasattr(self.model.config, "__dict__")
+                else self.model.config
+            )
+            with open(model_config_path, "w") as f:
+                json.dump(model_config, f, indent=2)
+            logger.info("Saved model config from model.config")
+        else:
+            logger.warning("No model config found - config.json not saved")
 
         # Save tokenizer
         self.tokenizer.save_pretrained(checkpoint_path)

@@ -66,13 +66,24 @@ def convert_npz_to_safetensors(model_dir: str):
         safetensors_path = model_dir / "model.safetensors"
         mx.save_safetensors(str(safetensors_path), dict(mlx.utils.tree_flatten(model.parameters())))
 
-        # Save model config if available
-        if hasattr(model, "config"):
-            import json
+        # Save model config - mlx_lm models have args attribute
+        import json
 
-            config_path = model_dir / "config.json"
+        config_path = model_dir / "config.json"
+        if hasattr(model, "args"):
+            # Convert model args to dict for saving
+            model_config = vars(model.args) if hasattr(model.args, "__dict__") else model.args
             with open(config_path, "w") as f:
-                json.dump(model.config.__dict__, f, indent=2)
+                json.dump(model_config, f, indent=2)
+            print(f"  - Saved model config from model.args")
+        elif hasattr(model, "config"):
+            # Fallback to config attribute
+            model_config = vars(model.config) if hasattr(model.config, "__dict__") else model.config
+            with open(config_path, "w") as f:
+                json.dump(model_config, f, indent=2)
+            print(f"  - Saved model config from model.config")
+        else:
+            print(f"  - Warning: No model config found to save")
 
         # Save tokenizer
         tokenizer.save_pretrained(str(model_dir))
