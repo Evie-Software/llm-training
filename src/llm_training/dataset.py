@@ -176,7 +176,13 @@ class MarkdownDataset:
         return path.parent.name
 
     def _process_files(self):
-        """Process all files and create training samples."""
+        """Process all files and create training samples with deduplication."""
+        import hashlib
+
+        seen_hashes = set()  # Track content hashes to detect duplicates
+        duplicates_removed = 0
+        short_chunks_skipped = 0
+
         for file_path in self.file_paths:
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
@@ -187,6 +193,11 @@ class MarkdownDataset:
 
                 # Clean content
                 cleaned = self.parser.clean_markdown(content, is_mdx=is_mdx)
+
+                # Skip if content is too short (less than 50 chars)
+                if len(cleaned.strip()) < 50:
+                    short_chunks_skipped += 1
+                    continue
 
                 # Add source prefix if enabled
                 if self.add_source_prefix:
@@ -201,29 +212,50 @@ class MarkdownDataset:
                 for i in range(0, len(tokens), self.stride):
                     chunk = tokens[i : i + self.max_length]
 
-                    if len(chunk) > 10:  # Skip very short chunks
-                        # Pad if necessary
-                        if len(chunk) < self.max_length:
-                            chunk = chunk + [self.tokenizer.pad_token_id] * (
-                                self.max_length - len(chunk)
-                            )
+                    # Skip very short chunks (less than 20% of max_length)
+                    min_chunk_size = max(50, int(self.max_length * 0.2))
+                    if len(chunk) < min_chunk_size:
+                        short_chunks_skipped += 1
+                        continue
 
-                        # Create attention mask
-                        attention_mask = [
-                            1 if token != self.tokenizer.pad_token_id else 0 for token in chunk
-                        ]
+                    # Compute hash of chunk to detect duplicates
+                    chunk_text = self.tokenizer.decode(chunk, skip_special_tokens=True)
+                    chunk_hash = hashlib.md5(chunk_text.encode()).hexdigest()
 
-                        self.samples.append(
-                            {
-                                "input_ids": np.array(chunk, dtype=np.int32),
-                                "attention_mask": np.array(attention_mask, dtype=np.int32),
-                                "source_file": file_path,
-                            }
+                    if chunk_hash in seen_hashes:
+                        duplicates_removed += 1
+                        continue
+
+                    seen_hashes.add(chunk_hash)
+
+                    # Pad if necessary
+                    if len(chunk) < self.max_length:
+                        chunk = chunk + [self.tokenizer.pad_token_id] * (
+                            self.max_length - len(chunk)
                         )
+
+                    # Create attention mask
+                    attention_mask = [
+                        1 if token != self.tokenizer.pad_token_id else 0 for token in chunk
+                    ]
+
+                    self.samples.append(
+                        {
+                            "input_ids": np.array(chunk, dtype=np.int32),
+                            "attention_mask": np.array(attention_mask, dtype=np.int32),
+                            "source_file": file_path,
+                        }
+                    )
 
             except Exception as e:
                 logger.warning(f"Error processing {file_path}: {e}")
                 continue
+
+        # Log deduplication statistics
+        if duplicates_removed > 0:
+            logger.info(f"Removed {duplicates_removed} duplicate chunks")
+        if short_chunks_skipped > 0:
+            logger.info(f"Skipped {short_chunks_skipped} short/low-quality chunks")
 
     def __len__(self) -> int:
         return len(self.samples)
