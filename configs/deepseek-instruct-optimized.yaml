@@ -15,7 +15,7 @@ data:
   add_source_prefix: false  # Set to true if training on multiple Laravel products
 
 model:
-  model_name: "mlx-community/deepseek-coder-1.3b-instruct-mlx"  # Instruct version
+  model_name: "mlx-community/deepseek-coder-1.3b-base-mlx"  # Base version (instruct doesn't have safetensors)
   cache_dir: "models/cache"
   output_dir: "models/output"
   max_length: 1024  # Matches data.max_length
