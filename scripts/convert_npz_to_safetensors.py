@@ -11,8 +11,8 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+import mlx.core as mx
 from mlx_lm import load
-from mlx_lm.utils import save_model
 from transformers import AutoTokenizer
 
 
@@ -60,12 +60,25 @@ def convert_npz_to_safetensors(model_dir: str):
         print(f"Loading weights from {npz_path}")
         model.load_weights(str(npz_path))
 
-        # Save in safetensors format
+        # Save in safetensors format using MLX's native function
         print(f"Saving to safetensors format...")
-        save_model(str(model_dir), model, tokenizer)
+        safetensors_path = model_dir / "model.safetensors"
+        mx.save_safetensors(str(safetensors_path), dict(mx.utils.tree_flatten(model.parameters())))
+
+        # Save model config if available
+        if hasattr(model, "config"):
+            import json
+
+            config_path = model_dir / "config.json"
+            with open(config_path, "w") as f:
+                json.dump(model.config.__dict__, f, indent=2)
+
+        # Save tokenizer
+        tokenizer.save_pretrained(str(model_dir))
 
         print(f"✓ Conversion successful!")
-        print(f"  - Created: {model_dir}/model.safetensors")
+        print(f"  - Created: {safetensors_path}")
+        print(f"  - Saved tokenizer files")
         print(f"  - Old NPZ file preserved: {npz_path}")
 
         return True

@@ -274,15 +274,25 @@ class Trainer:
         """Save model checkpoint in safetensors format compatible with mlx_lm."""
         os.makedirs(checkpoint_path, exist_ok=True)
 
-        # Save model weights in safetensors format using mlx_lm's save_model
-        # This creates model.safetensors which mlx_lm.load() can read
-        from mlx_lm.utils import save_model
+        # Save model weights in safetensors format
+        # Use MLX's native safetensors saving
+        weights_path = os.path.join(checkpoint_path, "model.safetensors")
+        mx.save_safetensors(weights_path, dict(mx.utils.tree_flatten(self.model.parameters())))
 
-        save_model(checkpoint_path, self.model, self.tokenizer)
+        # Save model config
+        model_config_path = os.path.join(checkpoint_path, "config.json")
+        if hasattr(self.model, "config"):
+            import json
+
+            with open(model_config_path, "w") as f:
+                json.dump(self.model.config.__dict__, f, indent=2)
+
+        # Save tokenizer
+        self.tokenizer.save_pretrained(checkpoint_path)
 
         # Save additional training state
-        config_path = os.path.join(checkpoint_path, "training_state.json")
-        with open(config_path, "w") as f:
+        training_state_path = os.path.join(checkpoint_path, "training_state.json")
+        with open(training_state_path, "w") as f:
             json.dump(
                 {
                     "model_name": self.config.model.model_name,
