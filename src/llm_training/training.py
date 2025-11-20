@@ -366,7 +366,7 @@ class Trainer:
             self.tokenizer,
             prompt=prompt,
             max_tokens=max_length,
-            temp=temperature,
+            temperature=temperature,
             top_p=top_p,
         )
 
