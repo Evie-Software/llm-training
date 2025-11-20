@@ -271,15 +271,17 @@ class Trainer:
         return avg_loss
 
     def save_checkpoint(self, checkpoint_path: str):
-        """Save model checkpoint."""
+        """Save model checkpoint in safetensors format compatible with mlx_lm."""
         os.makedirs(checkpoint_path, exist_ok=True)
 
-        # Save model weights
-        weights_path = os.path.join(checkpoint_path, "weights.npz")
-        self.model.save_weights(weights_path)
+        # Save model weights in safetensors format using mlx_lm's save_model
+        # This creates model.safetensors which mlx_lm.load() can read
+        from mlx_lm.utils import save_model
 
-        # Save config
-        config_path = os.path.join(checkpoint_path, "config.json")
+        save_model(checkpoint_path, self.model, self.tokenizer)
+
+        # Save additional training state
+        config_path = os.path.join(checkpoint_path, "training_state.json")
         with open(config_path, "w") as f:
             json.dump(
                 {
@@ -291,25 +293,22 @@ class Trainer:
                 f,
             )
 
-        # Save tokenizer
-        self.tokenizer.save_pretrained(checkpoint_path)
-
         logger.info(f"Checkpoint saved to {checkpoint_path}")
 
     def load_checkpoint(self, checkpoint_path: str):
-        """Load model checkpoint."""
+        """Load model checkpoint from safetensors format."""
         logger.info(f"Loading checkpoint from {checkpoint_path}")
 
-        # Load weights
-        weights_path = os.path.join(checkpoint_path, "weights.npz")
-        self.model.load_weights(weights_path)
+        # Load model and tokenizer from safetensors
+        self.model, self.tokenizer = load(checkpoint_path)
 
-        # Load config
-        config_path = os.path.join(checkpoint_path, "config.json")
-        with open(config_path, "r") as f:
-            checkpoint_config = json.load(f)
-            self.global_step = checkpoint_config.get("global_step", 0)
-            self.current_epoch = checkpoint_config.get("epoch", 0)
+        # Load training state if available
+        state_path = os.path.join(checkpoint_path, "training_state.json")
+        if os.path.exists(state_path):
+            with open(state_path, "r") as f:
+                checkpoint_config = json.load(f)
+                self.global_step = checkpoint_config.get("global_step", 0)
+                self.current_epoch = checkpoint_config.get("epoch", 0)
 
         logger.info("Checkpoint loaded successfully")
 
