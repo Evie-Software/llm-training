@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import mlx.core as mx
+import mlx.utils
 from mlx_lm import load
 from transformers import AutoTokenizer
 
@@ -63,7 +64,7 @@ def convert_npz_to_safetensors(model_dir: str):
         # Save in safetensors format using MLX's native function
         print(f"Saving to safetensors format...")
         safetensors_path = model_dir / "model.safetensors"
-        mx.save_safetensors(str(safetensors_path), dict(mx.utils.tree_flatten(model.parameters())))
+        mx.save_safetensors(str(safetensors_path), dict(mlx.utils.tree_flatten(model.parameters())))
 
         # Save model config if available
         if hasattr(model, "config"):

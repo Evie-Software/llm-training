@@ -13,6 +13,7 @@ from tqdm import tqdm
 import mlx.core as mx
 import mlx.nn as nn
 import mlx.optimizers as optim
+import mlx.utils
 from mlx_lm import load, generate
 
 from llm_training.config import Config
@@ -277,7 +278,7 @@ class Trainer:
         # Save model weights in safetensors format
         # Use MLX's native safetensors saving
         weights_path = os.path.join(checkpoint_path, "model.safetensors")
-        mx.save_safetensors(weights_path, dict(mx.utils.tree_flatten(self.model.parameters())))
+        mx.save_safetensors(weights_path, dict(mlx.utils.tree_flatten(self.model.parameters())))
 
         # Save model config
         model_config_path = os.path.join(checkpoint_path, "config.json")
