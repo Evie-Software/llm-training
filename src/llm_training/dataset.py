@@ -194,8 +194,8 @@ class MarkdownDataset:
                 # Clean content
                 cleaned = self.parser.clean_markdown(content, is_mdx=is_mdx)
 
-                # Skip if content is too short (less than 50 chars)
-                if len(cleaned.strip()) < 50:
+                # Skip if content is too short (less than 10 chars - very minimal)
+                if len(cleaned.strip()) < 10:
                     short_chunks_skipped += 1
                     continue
 
@@ -212,15 +212,16 @@ class MarkdownDataset:
                 for i in range(0, len(tokens), self.stride):
                     chunk = tokens[i : i + self.max_length]
 
-                    # Skip very short chunks (less than 20% of max_length)
-                    min_chunk_size = max(50, int(self.max_length * 0.2))
+                    # Skip very short chunks (less than 10 tokens for tests, or 10% of max_length)
+                    min_chunk_size = max(10, int(self.max_length * 0.1))
                     if len(chunk) < min_chunk_size:
                         short_chunks_skipped += 1
                         continue
 
                     # Compute hash of chunk to detect duplicates
+                    # MD5 used for deduplication, not security
                     chunk_text = self.tokenizer.decode(chunk, skip_special_tokens=True)
-                    chunk_hash = hashlib.md5(chunk_text.encode()).hexdigest()
+                    chunk_hash = hashlib.md5(chunk_text.encode(), usedforsecurity=False).hexdigest()
 
                     if chunk_hash in seen_hashes:
                         duplicates_removed += 1
