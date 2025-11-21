@@ -196,7 +196,8 @@ class Trainer:
         best_eval_loss = float("inf")
         steps_per_epoch = len(self.train_dataset) // self.config.training.batch_size
 
-        for epoch in range(self.config.training.num_train_epochs):
+        # Start from current_epoch when resuming from checkpoint
+        for epoch in range(self.current_epoch, self.config.training.num_train_epochs):
             self.current_epoch = epoch
             logger.info(f"Epoch {epoch + 1}/{self.config.training.num_train_epochs}")
 
