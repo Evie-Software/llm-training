@@ -203,6 +203,7 @@ class Trainer:
 
             # Training loop
             epoch_loss = 0.0
+            steps_in_epoch = 0  # Track steps within this epoch for accurate loss averaging
             progress_bar = tqdm(
                 self.train_dataset.batch_iterate(self.config.training.batch_size, shuffle=True),
                 total=steps_per_epoch,
@@ -212,11 +213,12 @@ class Trainer:
             for batch in progress_bar:
                 loss = self.train_step(batch)
                 epoch_loss += loss
+                steps_in_epoch += 1
                 self.global_step += 1
 
                 # Logging
                 if self.global_step % self.config.training.logging_steps == 0:
-                    avg_loss = epoch_loss / (self.global_step % steps_per_epoch + 1)
+                    avg_loss = epoch_loss / steps_in_epoch
                     progress_bar.set_postfix({"loss": f"{avg_loss:.4f}"})
                     logger.info(f"Step {self.global_step}, Loss: {avg_loss:.4f}")
 
@@ -238,7 +240,7 @@ class Trainer:
                     self.save_checkpoint(checkpoint_path)
 
             # End of epoch
-            avg_epoch_loss = epoch_loss / steps_per_epoch
+            avg_epoch_loss = epoch_loss / steps_in_epoch if steps_in_epoch > 0 else 0.0
             logger.info(f"Epoch {epoch + 1} completed. Average loss: {avg_epoch_loss:.4f}")
 
         # Save final model
