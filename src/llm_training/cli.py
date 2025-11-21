@@ -5,6 +5,7 @@ Command-line interface for MLX-based LLM training.
 import os
 import warnings
 import logging
+from typing import Optional
 
 # Suppress transformers warning about missing PyTorch/TensorFlow
 # We only use transformers for tokenizers, not models (we use MLX for models)
