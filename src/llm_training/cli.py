@@ -23,12 +23,11 @@ logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR
 
 import argparse
 import sys
-from pathlib import Path
 
 from llm_training.config import Config, create_default_config
 from llm_training.dataset import prepare_dataset
 from llm_training.training import Trainer
-from llm_training.evaluation import Evaluator, run_quick_test
+from llm_training.evaluation import Evaluator
 from llm_training.finetuning import LoRAFineTuner
 from llm_training.utils import print_system_info
 from transformers import AutoTokenizer
@@ -55,7 +54,7 @@ def find_latest_checkpoint(checkpoint_dir: str) -> Optional[str]:
 def create_config_command(args):
     """Create a default configuration file."""
     output_path = args.output or "configs/default.yaml"
-    config = create_default_config(output_path)
+    create_default_config(output_path)
     print(f"✓ Configuration file created at {output_path}")
     print("\nEdit this file to customize your training settings.")
 
@@ -263,7 +262,7 @@ def main():
     finetune_parser.add_argument("--config", help="Path to configuration file")
 
     # Info command
-    info_parser = subparsers.add_parser("info", help="Show system information")
+    subparsers.add_parser("info", help="Show system information")
 
     args = parser.parse_args()
 

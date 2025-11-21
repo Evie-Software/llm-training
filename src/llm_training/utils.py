@@ -2,11 +2,9 @@
 Utility functions for MLX-based LLM training.
 """
 
-import os
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
 import mlx.core as mx
 import psutil

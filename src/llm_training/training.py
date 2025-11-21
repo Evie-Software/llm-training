@@ -5,8 +5,7 @@ Optimized for M3 MacBook Pro with 16GB RAM.
 
 import os
 import logging
-from typing import Optional, Dict, Any
-from pathlib import Path
+from typing import Optional
 import json
 from tqdm import tqdm
 
@@ -350,7 +349,9 @@ class Trainer:
                 checkpoint_config = json.load(f)
                 self.global_step = checkpoint_config.get("global_step", 0)
                 self.current_epoch = checkpoint_config.get("epoch", 0)
-            logger.info(f"Restored training state: epoch={self.current_epoch}, step={self.global_step}")
+            logger.info(
+                f"Restored training state: epoch={self.current_epoch}, step={self.global_step}"
+            )
         else:
             logger.warning(f"No training state found at {state_path}")
 

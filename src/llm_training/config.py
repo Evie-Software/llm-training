@@ -6,7 +6,7 @@ Supports YAML config files with auto-detection for optimal defaults based on sys
 import os
 import yaml
 from dataclasses import dataclass, field, asdict
-from typing import Optional, Dict, Any, List
+from typing import Optional, List
 from pathlib import Path
 
 
