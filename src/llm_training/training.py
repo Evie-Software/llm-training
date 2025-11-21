@@ -332,8 +332,13 @@ class Trainer:
         """Load model checkpoint from safetensors format."""
         logger.info(f"Loading checkpoint from {checkpoint_path}")
 
-        # Load model and tokenizer from safetensors
-        self.model, self.tokenizer = load(checkpoint_path)
+        # Load model weights into existing model (don't reload entire model)
+        weights_path = os.path.join(checkpoint_path, "model.safetensors")
+        if os.path.exists(weights_path):
+            self.model.load_weights(weights_path)
+            logger.info(f"Loaded model weights from {weights_path}")
+        else:
+            logger.warning(f"No model weights found at {weights_path}")
 
         # Load training state if available
         state_path = os.path.join(checkpoint_path, "training_state.json")
@@ -342,6 +347,9 @@ class Trainer:
                 checkpoint_config = json.load(f)
                 self.global_step = checkpoint_config.get("global_step", 0)
                 self.current_epoch = checkpoint_config.get("epoch", 0)
+            logger.info(f"Restored training state: epoch={self.current_epoch}, step={self.global_step}")
+        else:
+            logger.warning(f"No training state found at {state_path}")
 
         logger.info("Checkpoint loaded successfully")
 
