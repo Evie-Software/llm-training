@@ -1,0 +1,57 @@
+# Balanced configuration for gpt2-medium with realistic settings
+# 768 token context (sweet spot for 16GB RAM)
+# Optimized for stable training without overheating
+
+data:
+  raw_data_path: "data/raw"
+  processed_data_path: "data/processed"
+  file_extensions:
+    - ".md"
+    - ".mdx"
+  max_length: 768  # Balanced - bigger than 512, but stable on 16GB
+  train_test_split: 0.9
+  validation_split: 0.05
+  seed: 42
+  add_source_prefix: false
+
+model:
+  model_name: "viktor2698/gpt2-medium-mlx-8Bit"  # 355M params, 8-bit quantized
+  cache_dir: "models/cache"
+  output_dir: "models/output"
+  max_length: 768
+
+training:
+  output_dir: "checkpoints"
+  logging_dir: "logs"
+  num_train_epochs: 10
+  batch_size: 1  # Reduced from 2 - less memory pressure
+  gradient_accumulation_steps: 16  # Effective batch size still 16
+  learning_rate: 3.0e-05
+  weight_decay: 0.01
+  warmup_steps: 500
+  max_grad_norm: 1.0
+  grad_checkpoint: true
+
+  # More frequent saves for resuming
+  eval_steps: 250  # More frequent eval
+  save_steps: 500  # More frequent checkpoints
+  save_total_limit: 3
+  evaluation_strategy: "steps"
+  save_strategy: "steps"
+
+  logging_steps: 50
+  report_to: "none"
+  seed: 42
+  resume_from_checkpoint: null  # Set to checkpoint path to resume
+
+finetuning:
+  lora_rank: 8
+  lora_alpha: 16
+  lora_dropout: 0.1
+  lora_layers: 12
+  num_train_epochs: 5
+  batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 0.0003
+  output_dir: "models/finetuned"
+  logging_dir: "logs/finetuning"

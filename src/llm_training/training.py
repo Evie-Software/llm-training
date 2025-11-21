@@ -72,6 +72,13 @@ class Trainer:
         self.global_step = 0
         self.current_epoch = 0
 
+        # Resume from checkpoint if specified
+        if config.training.resume_from_checkpoint:
+            self.load_checkpoint(config.training.resume_from_checkpoint)
+            logger.info(
+                f"Resumed from checkpoint at epoch {self.current_epoch}, step {self.global_step}"
+            )
+
         logger.info("MLX Trainer initialized successfully")
 
     def _load_model(self):
