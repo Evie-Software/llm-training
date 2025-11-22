@@ -2,11 +2,9 @@
 Utility functions for MLX-based LLM training.
 """
 
-import os
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
 import mlx.core as mx
 import psutil
@@ -60,9 +58,24 @@ def estimate_memory_mlx(
     Returns:
         Dictionary with memory estimates
     """
+
+    def count_params(params_dict):
+        """Recursively count parameters in nested MLX model dict."""
+        import mlx.core as mx
+
+        total = 0
+        for value in params_dict.values():
+            if isinstance(value, dict):
+                # Recursively count nested dicts
+                total += count_params(value)
+            elif isinstance(value, mx.array):
+                # MLX array - count elements
+                total += value.size
+        return total
+
     # Count parameters
-    total_params = sum(p.size for p in model.parameters().values())
-    trainable_params = sum(p.size for p in model.trainable_parameters().values())
+    total_params = count_params(model.parameters())
+    trainable_params = count_params(model.trainable_parameters())
 
     # Estimate model size (MLX uses float32 by default = 4 bytes per parameter)
     model_size_gb = (total_params * 4) / (1024**3)

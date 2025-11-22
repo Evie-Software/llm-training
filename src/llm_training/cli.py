@@ -3,28 +3,58 @@ Command-line interface for MLX-based LLM training.
 """
 
 import os
+import warnings
+import logging
+from typing import Optional
 
 # Suppress transformers warning about missing PyTorch/TensorFlow
 # We only use transformers for tokenizers, not models (we use MLX for models)
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 
+# Suppress tokenizers library warnings
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# Suppress tokenizer warnings about long sequences - we handle chunking ourselves
+warnings.filterwarnings("ignore", message="Token indices sequence length is longer than")
+warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
+
+# Reduce transformers logging verbosity
+logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
+
 import argparse
 import sys
-from pathlib import Path
 
 from llm_training.config import Config, create_default_config
 from llm_training.dataset import prepare_dataset
 from llm_training.training import Trainer
-from llm_training.evaluation import Evaluator, run_quick_test
+from llm_training.evaluation import Evaluator
 from llm_training.finetuning import LoRAFineTuner
 from llm_training.utils import print_system_info
 from transformers import AutoTokenizer
 
 
+def find_latest_checkpoint(checkpoint_dir: str) -> Optional[str]:
+    """Find the latest checkpoint in a directory."""
+    import glob
+
+    checkpoint_pattern = os.path.join(checkpoint_dir, "checkpoint-*")
+    checkpoints = glob.glob(checkpoint_pattern)
+
+    if not checkpoints:
+        return None
+
+    # Sort by step number
+    checkpoints = sorted(
+        checkpoints, key=lambda x: int(x.split("-")[-1]) if x.split("-")[-1].isdigit() else 0
+    )
+
+    return checkpoints[-1] if checkpoints else None
+
+
 def create_config_command(args):
     """Create a default configuration file."""
     output_path = args.output or "configs/default.yaml"
-    config = create_default_config(output_path)
+    create_default_config(output_path)
     print(f"✓ Configuration file created at {output_path}")
     print("\nEdit this file to customize your training settings.")
 
@@ -38,6 +68,15 @@ def train_command(args):
         config = Config.from_yaml(args.config)
     else:
         config = Config.get_default()
+
+    # Check for resume flag or find latest checkpoint
+    if args.resume:
+        latest_checkpoint = find_latest_checkpoint(config.training.output_dir)
+        if latest_checkpoint:
+            config.training.resume_from_checkpoint = latest_checkpoint
+            print(f"📁 Resuming from checkpoint: {latest_checkpoint}")
+        else:
+            print("⚠️  No checkpoint found to resume from, starting fresh")
 
     # Validate config
     config.validate()
@@ -201,6 +240,11 @@ def main():
     train_parser = subparsers.add_parser("train", help="Train a model")
     train_parser.add_argument("--data-dir", help="Directory containing markdown files")
     train_parser.add_argument("--config", help="Path to configuration file")
+    train_parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from latest checkpoint if available",
+    )
 
     # Evaluate command
     eval_parser = subparsers.add_parser("evaluate", help="Evaluate a trained model")
@@ -218,7 +262,7 @@ def main():
     finetune_parser.add_argument("--config", help="Path to configuration file")
 
     # Info command
-    info_parser = subparsers.add_parser("info", help="Show system information")
+    subparsers.add_parser("info", help="Show system information")
 
     args = parser.parse_args()
 

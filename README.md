@@ -124,16 +124,13 @@ This will check:
 
 ### 1. Prepare Your Data
 
-Place your `.md` or `.mdx` files in `data/raw/`. The framework will:
+Place your `.md` or `.mdx` files in `data/raw/`. The framework will automatically:
 - Recursively find all markdown files
 - Clean and parse MDX components
 - Convert to plain text while preserving structure
 - Split into train/validation/test sets
 
-```bash
-# Check your data
-llm-train prepare --data-dir data/raw
-```
+Data preparation happens automatically when you run the `train` command.
 
 ### 2. Configure Training
 
@@ -144,7 +141,7 @@ llm-train config -o configs/my_config.yaml
 ```
 
 Edit `configs/my_config.yaml` to customize:
-- Model selection (default: mlx-community/gpt2)
+- Model selection (default: mlx-community/gpt2-base-mlx)
 - Batch size and memory settings
 - Learning rate and optimization
 - LoRA parameters for fine-tuning
@@ -198,7 +195,7 @@ llm-train evaluate models/output \
 Use LoRA for memory-efficient fine-tuning:
 
 ```bash
-llm-train finetune mlx-community/gpt2 data/specialized \
+llm-train finetune mlx-community/gpt2-base-mlx data/specialized \
     --config configs/my_config.yaml
 ```
 
@@ -216,7 +213,7 @@ The default configuration is optimized for all Apple Silicon Macs:
 
 ```yaml
 model:
-  model_name: mlx-community/gpt2  # 124M parameters
+  model_name: mlx-community/gpt2-base-mlx  # 124M parameters
   max_length: 512
 
 training:
@@ -233,16 +230,15 @@ training:
 
 | Model | Parameters | RAM Usage | Speed | Quality |
 |-------|-----------|-----------|-------|---------|
-| `mlx-community/distilgpt2` | 82M | ~3GB | Fast | Good |
-| `mlx-community/gpt2` | 124M | ~4GB | Medium | Better |
-| `mlx-community/gpt2-medium` | 355M | ~7GB | Slower | Best |
+| `mlx-community/gpt2-base-mlx` | 124M | ~4GB | Medium | Good |
+| `mlx-community/deepseek-coder-1.3b-base-mlx` | 1.3B | ~5GB | Medium | Better (code) |
+| `viktor2698/gpt2-medium-mlx-8Bit` | 355M | ~3GB | Medium | Better (quantized) |
 
-**Alternative models:**
-- `mlx-community/opt-125m` - Similar to GPT-2
-- `mlx-community/pythia-160m` - Well-trained small model
-- `mlx-community/phi-2` - High quality, but requires more memory
+**Models for 32GB+ RAM:**
+- `MCES10/gpt2-large-mlx-fp16` (774M params) - Better quality
+- `MCES10/gpt2-xl-mlx-fp16` (1.5B params) - Best quality
 
-> **Note:** MLX models are available on Hugging Face Hub under the `mlx-community` organization.
+> **Note:** MLX models are available on Hugging Face Hub. Search for models with `library:mlx` filter or visit the `mlx-community` organization. Over 3,000 MLX-optimized models are available.
 
 ### Memory Optimization Tips
 
@@ -264,7 +260,7 @@ If you run out of memory:
 3. **Use a smaller model:**
    ```yaml
    model:
-     model_name: mlx-community/distilgpt2
+     model_name: mlx-community/gpt2-base-mlx
    ```
 
 4. **Enable gradient checkpointing:**
@@ -410,7 +406,8 @@ data:
   max_length: 512  # Or 1024 if you have 32GB+ RAM
 
 model:
-  model_name: "mlx-community/gpt2"  # 124M params, good for 16GB+
+  model_name: "mlx-community/gpt2-base-mlx"  # 124M params, good for 16GB+
+  # For code-focused: "mlx-community/deepseek-coder-1.3b-base-mlx"
 ```
 
 This gives you:
@@ -534,7 +531,7 @@ results = evaluator.comprehensive_evaluation(
 from llm_training.finetuning import LoRAFineTuner
 
 finetuner = LoRAFineTuner(
-    base_model_path="mlx-community/gpt2",
+    base_model_path="mlx-community/gpt2-base-mlx",
     config=config,
     train_dataset=train_ds,
     eval_dataset=val_ds,

@@ -1,4 +1,4 @@
-# Example configuration for training a small model (distilgpt2)
+# Example configuration for training a small model (gpt2-base-mlx)
 # Best for quick experiments and testing
 # Optimized for MLX on Apple Silicon
 
@@ -12,9 +12,10 @@ data:
   train_test_split: 0.9
   validation_split: 0.05
   seed: 42
+  add_source_prefix: false  # Set to true for multi-source training
 
 model:
-  model_name: "mlx-community/distilgpt2"  # Small 82M parameter model
+  model_name: "mlx-community/gpt2-base-mlx"  # 124M parameter model
   cache_dir: "models/cache"
   output_dir: "models/output"
   max_length: 512

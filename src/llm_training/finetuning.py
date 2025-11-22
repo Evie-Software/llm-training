@@ -12,11 +12,10 @@ import mlx.core as mx
 import mlx.nn as nn
 import mlx.optimizers as optim
 from mlx_lm import load, generate
-from mlx_lm.tuner.trainer import TrainingArgs, train
 from mlx_lm.tuner.lora import LoRALinear
 from tqdm import tqdm
 
-from llm_training.config import Config, FineTuningConfig
+from llm_training.config import Config
 from llm_training.dataset import MarkdownDataset
 from llm_training.utils import setup_logging
 
@@ -153,8 +152,6 @@ class LoRAFineTuner:
             logger.info(f"Evaluation samples: {len(self.eval_dataset)}")
 
         steps_per_epoch = len(self.train_dataset) // self.config.finetuning.batch_size
-        total_steps = steps_per_epoch * self.config.finetuning.num_train_epochs
-
         global_step = 0
 
         for epoch in range(self.config.finetuning.num_train_epochs):

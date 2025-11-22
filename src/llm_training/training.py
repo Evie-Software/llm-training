@@ -5,14 +5,14 @@ Optimized for M3 MacBook Pro with 16GB RAM.
 
 import os
 import logging
-from typing import Optional, Dict, Any
-from pathlib import Path
+from typing import Optional
 import json
 from tqdm import tqdm
 
 import mlx.core as mx
 import mlx.nn as nn
 import mlx.optimizers as optim
+import mlx.utils
 from mlx_lm import load, generate
 
 from llm_training.config import Config
@@ -70,6 +70,13 @@ class Trainer:
         # Training state
         self.global_step = 0
         self.current_epoch = 0
+
+        # Resume from checkpoint if specified
+        if config.training.resume_from_checkpoint:
+            self.load_checkpoint(config.training.resume_from_checkpoint)
+            logger.info(
+                f"Resumed from checkpoint at epoch {self.current_epoch}, step {self.global_step}"
+            )
 
         logger.info("MLX Trainer initialized successfully")
 
@@ -188,12 +195,14 @@ class Trainer:
         best_eval_loss = float("inf")
         steps_per_epoch = len(self.train_dataset) // self.config.training.batch_size
 
-        for epoch in range(self.config.training.num_train_epochs):
+        # Start from current_epoch when resuming from checkpoint
+        for epoch in range(self.current_epoch, self.config.training.num_train_epochs):
             self.current_epoch = epoch
             logger.info(f"Epoch {epoch + 1}/{self.config.training.num_train_epochs}")
 
             # Training loop
             epoch_loss = 0.0
+            steps_in_epoch = 0  # Track steps within this epoch for accurate loss averaging
             progress_bar = tqdm(
                 self.train_dataset.batch_iterate(self.config.training.batch_size, shuffle=True),
                 total=steps_per_epoch,
@@ -203,11 +212,12 @@ class Trainer:
             for batch in progress_bar:
                 loss = self.train_step(batch)
                 epoch_loss += loss
+                steps_in_epoch += 1
                 self.global_step += 1
 
                 # Logging
                 if self.global_step % self.config.training.logging_steps == 0:
-                    avg_loss = epoch_loss / (self.global_step % steps_per_epoch + 1)
+                    avg_loss = epoch_loss / steps_in_epoch
                     progress_bar.set_postfix({"loss": f"{avg_loss:.4f}"})
                     logger.info(f"Step {self.global_step}, Loss: {avg_loss:.4f}")
 
@@ -229,7 +239,7 @@ class Trainer:
                     self.save_checkpoint(checkpoint_path)
 
             # End of epoch
-            avg_epoch_loss = epoch_loss / steps_per_epoch
+            avg_epoch_loss = epoch_loss / steps_in_epoch if steps_in_epoch > 0 else 0.0
             logger.info(f"Epoch {epoch + 1} completed. Average loss: {avg_epoch_loss:.4f}")
 
         # Save final model
@@ -271,16 +281,43 @@ class Trainer:
         return avg_loss
 
     def save_checkpoint(self, checkpoint_path: str):
-        """Save model checkpoint."""
+        """Save model checkpoint in safetensors format compatible with mlx_lm."""
         os.makedirs(checkpoint_path, exist_ok=True)
 
-        # Save model weights
-        weights_path = os.path.join(checkpoint_path, "weights.npz")
-        self.model.save_weights(weights_path)
+        # Save model weights in safetensors format
+        # Use MLX's native safetensors saving
+        weights_path = os.path.join(checkpoint_path, "model.safetensors")
+        mx.save_safetensors(weights_path, dict(mlx.utils.tree_flatten(self.model.parameters())))
 
-        # Save config
-        config_path = os.path.join(checkpoint_path, "config.json")
-        with open(config_path, "w") as f:
+        # Save model config - mlx_lm models have args attribute
+        model_config_path = os.path.join(checkpoint_path, "config.json")
+        if hasattr(self.model, "args"):
+            # Convert model args to dict for saving
+            model_config = (
+                vars(self.model.args) if hasattr(self.model.args, "__dict__") else self.model.args
+            )
+            with open(model_config_path, "w") as f:
+                json.dump(model_config, f, indent=2)
+            logger.info("Saved model config from model.args")
+        elif hasattr(self.model, "config"):
+            # Fallback to config attribute
+            model_config = (
+                vars(self.model.config)
+                if hasattr(self.model.config, "__dict__")
+                else self.model.config
+            )
+            with open(model_config_path, "w") as f:
+                json.dump(model_config, f, indent=2)
+            logger.info("Saved model config from model.config")
+        else:
+            logger.warning("No model config found - config.json not saved")
+
+        # Save tokenizer
+        self.tokenizer.save_pretrained(checkpoint_path)
+
+        # Save additional training state
+        training_state_path = os.path.join(checkpoint_path, "training_state.json")
+        with open(training_state_path, "w") as f:
             json.dump(
                 {
                     "model_name": self.config.model.model_name,
@@ -291,25 +328,32 @@ class Trainer:
                 f,
             )
 
-        # Save tokenizer
-        self.tokenizer.save_pretrained(checkpoint_path)
-
         logger.info(f"Checkpoint saved to {checkpoint_path}")
 
     def load_checkpoint(self, checkpoint_path: str):
-        """Load model checkpoint."""
+        """Load model checkpoint from safetensors format."""
         logger.info(f"Loading checkpoint from {checkpoint_path}")
 
-        # Load weights
-        weights_path = os.path.join(checkpoint_path, "weights.npz")
-        self.model.load_weights(weights_path)
+        # Load model weights into existing model (don't reload entire model)
+        weights_path = os.path.join(checkpoint_path, "model.safetensors")
+        if os.path.exists(weights_path):
+            self.model.load_weights(weights_path)
+            logger.info(f"Loaded model weights from {weights_path}")
+        else:
+            logger.warning(f"No model weights found at {weights_path}")
 
-        # Load config
-        config_path = os.path.join(checkpoint_path, "config.json")
-        with open(config_path, "r") as f:
-            checkpoint_config = json.load(f)
-            self.global_step = checkpoint_config.get("global_step", 0)
-            self.current_epoch = checkpoint_config.get("epoch", 0)
+        # Load training state if available
+        state_path = os.path.join(checkpoint_path, "training_state.json")
+        if os.path.exists(state_path):
+            with open(state_path, "r") as f:
+                checkpoint_config = json.load(f)
+                self.global_step = checkpoint_config.get("global_step", 0)
+                self.current_epoch = checkpoint_config.get("epoch", 0)
+            logger.info(
+                f"Restored training state: epoch={self.current_epoch}, step={self.global_step}"
+            )
+        else:
+            logger.warning(f"No training state found at {state_path}")
 
         logger.info("Checkpoint loaded successfully")
 
@@ -336,13 +380,12 @@ class Trainer:
             raise ValueError("Model not loaded")
 
         # Use mlx-lm generate function
+        # Note: temperature and top_p removed - not supported in current mlx_lm version
         response = generate(
             self.model,
             self.tokenizer,
             prompt=prompt,
             max_tokens=max_length,
-            temp=temperature,
-            top_p=top_p,
         )
 
         return response

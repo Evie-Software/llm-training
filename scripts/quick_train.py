@@ -5,7 +5,11 @@ Uses default settings optimized for M3 MacBook Pro.
 """
 
 import sys
+import warnings
 from pathlib import Path
+
+# Suppress tokenizer warnings about long sequences - we handle chunking ourselves
+warnings.filterwarnings("ignore", message="Token indices sequence length is longer than")
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))

@@ -186,13 +186,12 @@ class Evaluator:
         results = []
 
         for prompt in tqdm(prompts, desc="Generating"):
+            # Note: temperature and top_p removed - not supported in current mlx_lm version
             generated_text = generate(
                 self.model,
                 self.tokenizer,
                 prompt=prompt,
                 max_tokens=max_length,
-                temp=temperature,
-                top_p=top_p,
             )
 
             results.append(

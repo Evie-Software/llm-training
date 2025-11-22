@@ -3,7 +3,6 @@
 import pytest
 import tempfile
 import os
-from pathlib import Path
 
 from llm_training.config import (
     Config,
@@ -46,7 +45,7 @@ class TestModelConfig:
     def test_default_model(self):
         """Test default model configuration."""
         config = ModelConfig()
-        assert config.model_name == "mlx-community/gpt2"
+        assert config.model_name == "mlx-community/gpt2-base-mlx"
         assert config.max_length == 0  # 0 = auto-detect
 
     def test_custom_model(self):
@@ -192,7 +191,7 @@ class TestCreateDefaultConfig:
 
             # Check config is valid
             assert isinstance(config, Config)
-            assert config.model.model_name == "mlx-community/gpt2"
+            assert config.model.model_name == "mlx-community/gpt2-base-mlx"
 
             # Check auto-detection was applied
             assert config.data.max_length > 0

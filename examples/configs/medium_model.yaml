@@ -1,5 +1,5 @@
-# Example configuration for training a medium model (gpt2)
-# Good balance of quality and resource usage
+# Example configuration for training a medium model (deepseek-coder)
+# Good for code and documentation, larger than base GPT-2
 # Optimized for MLX on Apple Silicon
 
 data:
@@ -14,9 +14,10 @@ data:
   train_test_split: 0.9
   validation_split: 0.05
   seed: 42
+  add_source_prefix: false  # Set to true for multi-source training
 
 model:
-  model_name: "mlx-community/gpt2"  # Standard GPT-2 with 124M parameters
+  model_name: "mlx-community/deepseek-coder-1.3b-base-mlx"  # 1.3B parameters - code-focused
   cache_dir: "models/cache"
   output_dir: "models/output"
   max_length: 512

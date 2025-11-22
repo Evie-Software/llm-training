@@ -6,6 +6,7 @@ Handles parsing, cleaning, and tokenization of documentation files.
 import os
 import re
 import pickle  # nosec B403  # Used for saving/loading user's own processed datasets
+import warnings
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import logging
@@ -15,8 +16,18 @@ from transformers import PreTrainedTokenizer
 import markdown
 from bs4 import BeautifulSoup
 
+# Suppress tokenizer warnings about long sequences - we handle chunking ourselves
+warnings.filterwarnings(
+    "ignore",
+    message="Token indices sequence length is longer than the",
+    category=UserWarning,
+)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Suppress transformers tokenization warnings (they use logging, not warnings module)
+logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
 
 
 class MarkdownParser:
@@ -165,7 +176,13 @@ class MarkdownDataset:
         return path.parent.name
 
     def _process_files(self):
-        """Process all files and create training samples."""
+        """Process all files and create training samples with deduplication."""
+        import hashlib
+
+        seen_hashes = set()  # Track content hashes to detect duplicates
+        duplicates_removed = 0
+        short_chunks_skipped = 0
+
         for file_path in self.file_paths:
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
@@ -177,41 +194,69 @@ class MarkdownDataset:
                 # Clean content
                 cleaned = self.parser.clean_markdown(content, is_mdx=is_mdx)
 
+                # Skip if content is too short (less than 10 chars - very minimal)
+                if len(cleaned.strip()) < 10:
+                    short_chunks_skipped += 1
+                    continue
+
                 # Add source prefix if enabled
                 if self.add_source_prefix:
                     source_name = self._get_source_name(file_path)
                     cleaned = f"[{source_name}] {cleaned}"
 
-                # Tokenize and create chunks
-                tokens = self.tokenizer.encode(cleaned, add_special_tokens=True)
+                # Tokenize - we handle chunking ourselves, so don't truncate
+                # This suppresses the warning about long sequences
+                tokens = self.tokenizer.encode(cleaned, add_special_tokens=True, truncation=False)
 
                 # Create overlapping chunks for long documents
                 for i in range(0, len(tokens), self.stride):
                     chunk = tokens[i : i + self.max_length]
 
-                    if len(chunk) > 10:  # Skip very short chunks
-                        # Pad if necessary
-                        if len(chunk) < self.max_length:
-                            chunk = chunk + [self.tokenizer.pad_token_id] * (
-                                self.max_length - len(chunk)
-                            )
+                    # Skip very short chunks (less than 10 tokens for tests, or 10% of max_length)
+                    min_chunk_size = max(10, int(self.max_length * 0.1))
+                    if len(chunk) < min_chunk_size:
+                        short_chunks_skipped += 1
+                        continue
 
-                        # Create attention mask
-                        attention_mask = [
-                            1 if token != self.tokenizer.pad_token_id else 0 for token in chunk
-                        ]
+                    # Compute hash of chunk to detect duplicates
+                    # MD5 used for deduplication, not security
+                    chunk_text = self.tokenizer.decode(chunk, skip_special_tokens=True)
+                    chunk_hash = hashlib.md5(chunk_text.encode(), usedforsecurity=False).hexdigest()
 
-                        self.samples.append(
-                            {
-                                "input_ids": np.array(chunk, dtype=np.int32),
-                                "attention_mask": np.array(attention_mask, dtype=np.int32),
-                                "source_file": file_path,
-                            }
+                    if chunk_hash in seen_hashes:
+                        duplicates_removed += 1
+                        continue
+
+                    seen_hashes.add(chunk_hash)
+
+                    # Pad if necessary
+                    if len(chunk) < self.max_length:
+                        chunk = chunk + [self.tokenizer.pad_token_id] * (
+                            self.max_length - len(chunk)
                         )
+
+                    # Create attention mask
+                    attention_mask = [
+                        1 if token != self.tokenizer.pad_token_id else 0 for token in chunk
+                    ]
+
+                    self.samples.append(
+                        {
+                            "input_ids": np.array(chunk, dtype=np.int32),
+                            "attention_mask": np.array(attention_mask, dtype=np.int32),
+                            "source_file": file_path,
+                        }
+                    )
 
             except Exception as e:
                 logger.warning(f"Error processing {file_path}: {e}")
                 continue
+
+        # Log deduplication statistics
+        if duplicates_removed > 0:
+            logger.info(f"Removed {duplicates_removed} duplicate chunks")
+        if short_chunks_skipped > 0:
+            logger.info(f"Skipped {short_chunks_skipped} short/low-quality chunks")
 
     def __len__(self) -> int:
         return len(self.samples)

@@ -1,0 +1,56 @@
+# Optimized configuration for DeepSeek-Coder 1.3B Instruct
+# With deduplication, larger context, and longer training
+# Optimized for MLX on Apple Silicon with 16GB+ RAM
+
+data:
+  raw_data_path: "data/raw"
+  processed_data_path: "data/processed"
+  file_extensions:
+    - ".md"
+    - ".mdx"
+  max_length: 1024  # Increased from 512 for better context
+  train_test_split: 0.9
+  validation_split: 0.05
+  seed: 42
+  add_source_prefix: false  # Set to true if training on multiple Laravel products
+
+model:
+  model_name: "mlx-community/DeepSeek-Coder-V2-Lite-Base-mlx-4Bit"  # V2 Lite with 4-bit quantization
+  cache_dir: "models/cache"
+  output_dir: "models/output"
+  max_length: 1024  # Matches data.max_length
+
+training:
+  output_dir: "checkpoints"
+  logging_dir: "logs"
+  num_train_epochs: 10  # Increased from 3 for better convergence
+  batch_size: 2  # Smaller for 1.3B model with 1024 context
+  gradient_accumulation_steps: 8  # Effective batch size: 16
+  learning_rate: 3.0e-05  # Slightly lower for instruct model
+  weight_decay: 0.01
+  warmup_steps: 500
+  max_grad_norm: 1.0
+  grad_checkpoint: true  # Memory efficiency
+
+  # Evaluation and checkpointing
+  eval_steps: 500
+  save_steps: 1000
+  save_total_limit: 3  # Keep 3 best checkpoints
+  evaluation_strategy: "steps"
+  save_strategy: "steps"
+
+  logging_steps: 100
+  report_to: "none"
+  seed: 42
+
+finetuning:
+  lora_rank: 8
+  lora_alpha: 16
+  lora_dropout: 0.1
+  lora_layers: 12  # More layers for 1.3B model
+  num_train_epochs: 5
+  batch_size: 2
+  gradient_accumulation_steps: 8
+  learning_rate: 0.0003
+  output_dir: "models/finetuned"
+  logging_dir: "logs/finetuning"
