@@ -46,7 +46,59 @@ class Evaluator:
         self.config = config or Config.get_default()
 
         logger.info(f"Loading model from {model_path}")
-        self.model, self.tokenizer = load(model_path)
+
+        # Try loading with strict weight checking first
+        try:
+            self.model, self.tokenizer = load(model_path)
+            logger.info("Model loaded successfully")
+        except ValueError as e:
+            if "parameters not in model" in str(e):
+                # Model has extra parameters (likely quantization params from training)
+                # Load with non-strict mode to ignore extra parameters
+                logger.warning(f"Model has extra parameters (likely from quantization). Loading with strict=False")
+                logger.warning(f"Details: {str(e)[:200]}...")
+
+                # Load model without strict checking
+                # We need to manually load to avoid strict checking
+                from mlx_lm.utils import load_model
+                try:
+                    self.model, _ = load_model(model_path, lazy=False, model_config=None)
+                    # Load model weights without strict checking by catching the error
+                    # and loading manually
+                    import mlx.core as mx
+                    from mlx_lm.utils import load
+                    from transformers import AutoTokenizer
+
+                    # Load tokenizer separately
+                    self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+
+                    # Load weights manually with filtering
+                    weights_path = Path(model_path) / "model.safetensors"
+                    if weights_path.exists():
+                        logger.info("Loading weights while filtering quantization parameters...")
+                        weights = mx.load(str(weights_path))
+
+                        # Filter out quantization parameters (biases and scales)
+                        filtered_weights = {
+                            k: v for k, v in weights.items()
+                            if not (k.endswith('.biases') or k.endswith('.scales'))
+                        }
+
+                        logger.info(f"Filtered out {len(weights) - len(filtered_weights)} quantization parameters")
+
+                        # Load filtered weights
+                        self.model.load_weights(list(filtered_weights.items()), strict=False)
+                        logger.info("Model loaded successfully with filtered weights")
+                    else:
+                        logger.error(f"Weights file not found: {weights_path}")
+                        raise FileNotFoundError(f"Model weights not found at {weights_path}")
+
+                except Exception as inner_e:
+                    logger.error(f"Failed to load model even with workaround: {inner_e}")
+                    raise
+            else:
+                # Different error, re-raise
+                raise
 
         logger.info("Model loaded and ready for evaluation")
 

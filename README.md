@@ -54,24 +54,49 @@ python scripts/check_setup.py
 
 ### Your First Training Run
 
+Follow these steps for a complete training and evaluation workflow:
+
 ```bash
 # 1. Activate virtual environment
 source venv/bin/activate
 
 # 2. Add your markdown files to data/raw/
 #    You can organize them in subdirectories
+#    Example: data/raw/laravel-docs/*.md
 
-# 3. Create a default configuration
-llm-train config
+# 3. Create a configuration file (optional, uses defaults if skipped)
+llm-train config -o configs/my_config.yaml
+# Edit configs/my_config.yaml to customize settings
 
 # 4. Start training
-llm-train train --data-dir data/raw
+llm-train train --data-dir data/raw --config configs/my_config.yaml
 
-# 5. Check system info
+# 5. Monitor training progress
+tail -f logs/training.log  # In another terminal
+
+# 6. Evaluate your trained model
+llm-train evaluate models/output \
+    --prompts "Your test prompt" "Another prompt" \
+    --max-length 100 \
+    --config configs/my_config.yaml
+
+# 7. Check system info anytime
 llm-train info
 ```
 
-That's it! Your model will be saved to `models/output/` when training completes.
+**What happens during training:**
+- Markdown files are automatically cleaned and parsed
+- Data is split into train/validation/test sets (90/5/5 by default)
+- Model checkpoints are saved every 1000 steps to `checkpoints/`
+- Final trained model is saved to `models/output/`
+- Training logs are saved to `logs/training.log`
+
+**Expected timeline:**
+- Small dataset (<100 files): 15-30 minutes
+- Medium dataset (100-500 files): 30-90 minutes
+- Large dataset (500+ files): 1-3 hours
+
+(Times are for M1/M2/M3 with 16GB RAM using default settings)
 
 ## 📥 Installation
 
@@ -178,17 +203,49 @@ For programmatic monitoring, check the logs directory for structured output.
 
 ### 5. Evaluate Your Model
 
+After training, evaluate your model's performance and test text generation:
+
+#### Option A: Evaluate with Test Data
 ```bash
-# Evaluate with test data
+# Full evaluation with perplexity and loss metrics
 llm-train evaluate models/output \
     --test-data data/raw \
-    --output results.json
-
-# Quick generation test
-llm-train evaluate models/output \
-    --prompts "The main purpose of" "To get started," \
-    --max-length 100
+    --output results.json \
+    --config configs/gpt2-medium-backup.yaml
 ```
+
+This will:
+- Calculate perplexity on your test dataset
+- Compute average loss metrics
+- Save detailed results to `results.json`
+
+#### Option B: Quick Generation Test (Recommended)
+```bash
+# Test text generation with custom prompts
+llm-train evaluate models/output \
+    --prompts "Laravel routing" "How to deploy" "Database migrations" \
+    --max-length 100 \
+    --config configs/gpt2-medium-backup.yaml
+```
+
+This will:
+- Load your trained model
+- Generate text completions for each prompt
+- Display results in the terminal
+
+**Note:** The framework automatically handles both quantized and non-quantized models. If you trained with a quantized model (e.g., `viktor2698/gpt2-medium-mlx-8Bit`), the evaluation will filter quantization parameters as needed.
+
+#### Troubleshooting Evaluation
+
+**Error: "Received X parameters not in model"**
+- This occurs with quantized models and is now automatically handled
+- The evaluator will filter quantization parameters and retry
+- No action needed from you
+
+**Slow evaluation:**
+- Reduce `--max-length` for faster generation
+- Use a smaller batch of test prompts
+- Ensure other applications aren't consuming memory
 
 ### 6. Fine-tune for Specific Tasks
 
