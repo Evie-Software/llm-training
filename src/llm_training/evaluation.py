@@ -63,14 +63,10 @@ class Evaluator:
                 # Load model without strict checking
                 # We need to manually load to avoid strict checking
                 from mlx_lm.utils import load_model
+                from transformers import AutoTokenizer
 
                 try:
                     self.model, _ = load_model(model_path, lazy=False, model_config=None)
-                    # Load model weights without strict checking by catching the error
-                    # and loading manually
-                    import mlx.core as mx
-                    from mlx_lm.utils import load
-                    from transformers import AutoTokenizer
 
                     # Load tokenizer separately
                     self.tokenizer = AutoTokenizer.from_pretrained(model_path)
