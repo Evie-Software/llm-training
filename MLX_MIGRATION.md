@@ -105,16 +105,16 @@ for batch in data:
 
 - [x] Update requirements.txt
 - [x] Rewrite config.py
-- [ ] Rewrite dataset.py
-- [ ] Rewrite training.py
-- [ ] Rewrite evaluation.py
-- [ ] Rewrite finetuning.py
-- [ ] Update utils.py
-- [ ] Update CLI
-- [ ] Update documentation
-- [ ] Update tests
-- [ ] Update example configs
-- [ ] Test end-to-end training
+- [x] Rewrite dataset.py
+- [x] Rewrite training.py
+- [x] Rewrite evaluation.py (includes quantized model support)
+- [x] Rewrite finetuning.py
+- [x] Update utils.py
+- [x] Update CLI
+- [x] Update documentation
+- [x] Update tests
+- [x] Update example configs
+- [x] Test end-to-end training
 
 ## Compatibility Notes
 
